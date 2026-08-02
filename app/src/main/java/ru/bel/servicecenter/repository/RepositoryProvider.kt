@@ -14,4 +14,8 @@ object RepositoryProvider {
     val priceRepo: PriceRepository = repo
     val orderRepo: OrderRepository = repo
     val orderItemRepo: OrderItemRepository = repo
+
+    suspend fun checkConnection() = (clientRepo as SupabaseRepository).checkConnection()
+    suspend fun checkTablesExist() = (clientRepo as SupabaseRepository).checkTablesExist()
+    suspend fun checkAdminExists() = (clientRepo as SupabaseRepository).checkAdminExists()
 }

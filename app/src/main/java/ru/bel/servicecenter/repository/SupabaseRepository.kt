@@ -1,102 +1,133 @@
 package ru.bel.servicecenter.repository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import ru.bel.servicecenter.BuildConfig
 import ru.bel.servicecenter.models.*
-import io.ktor.client.*
-import io.ktor.client.call.*
-import io.ktor.client.engine.android.*
-import io.ktor.client.plugins.contentnegotiation.*
-import io.ktor.client.request.*
-import io.ktor.http.*
-import io.ktor.serialization.kotlinx.json.*
-import kotlinx.serialization.json.Json
+import ru.bel.servicecenter.utils.LoggerService
 import timber.log.Timber
+import java.io.OutputStreamWriter
+import java.net.HttpURLConnection
+import java.net.URL
 
-// Единый класс, реализующий все интерфейсы репозиториев через REST API Supabase.
-// Использует Ktor для HTTP-запросов и kotlinx.serialization для парсинга JSON.
 class SupabaseRepository : ClientRepository, RoleRepository, UserRepository,
     CategoryRepository, ServiceRepository, PriceRepository, OrderRepository,
     OrderItemRepository {
 
-    // Создаём HTTP-клиент с поддержкой JSON
-    private val client = HttpClient(Android) {
-        install(ContentNegotiation) {
-            json(Json {
-                ignoreUnknownKeys = true    // игнорировать незнакомые поля в JSON
-                isLenient = true            // нестрогий режим (например, кавычки)
-            })
+    private val json = Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+        encodeDefaults = false
+    }
+
+    private val baseUrl = BuildConfig.SUPABASE_URL + "/rest/v1"
+    private val apiKey = BuildConfig.SUPABASE_KEY
+
+    /**
+     * Отправляет запрос и читает ответ (чтобы корректно закрыть соединение).
+     * Таймауты увеличены до 30 секунд.
+     */
+    private suspend fun sendRequest(
+        method: String,
+        table: String,
+        bodyString: String? = null,
+        id: String? = null
+    ): String = withContext(Dispatchers.IO) {
+        var url = "$baseUrl/$table"
+        if (id != null) url += "?id=eq.$id"
+
+        val connection = URL(url).openConnection() as HttpURLConnection
+        try {
+            connection.requestMethod = method
+            connection.setRequestProperty("apikey", apiKey)
+            connection.setRequestProperty("Authorization", "Bearer $apiKey")
+            connection.setRequestProperty("Content-Type", "application/json")
+            connection.setRequestProperty("Connection", "close")
+            connection.connectTimeout = 30_000
+            connection.readTimeout = 30_000
+            connection.doOutput = true
+
+            if (bodyString != null) {
+                LoggerService.log("$method $table ← $bodyString")
+                OutputStreamWriter(connection.outputStream).use { it.write(bodyString) }
+            } else {
+                LoggerService.log("$method $table")
+            }
+
+            connection.connect()
+            val responseCode = connection.responseCode
+            // Читаем ответ (даже если он не нужен) – это освобождает соединение
+            val responseText = connection.inputStream.bufferedReader().use { it.readText() }
+            LoggerService.log("$method $table → $responseCode: ${responseText.take(100)}")
+
+            if (responseCode !in 200..299) {
+                throw Exception("HTTP $responseCode: $responseText\n\nОтправленный JSON:\n$bodyString")
+            }
+            responseText
+        } finally {
+            connection.disconnect()
         }
     }
 
-    // Базовый URL Supabase REST API
-    private val baseUrl = BuildConfig.SUPABASE_URL + "/rest/v1"
-    // Секретный ключ (service_role) для авторизации
-    private val apiKey = BuildConfig.SUPABASE_KEY
+    private suspend inline fun <reified T> post(table: String, body: T): T {
+        val jsonBody = json.encodeToString(body)
+        sendRequest("POST", table, jsonBody)
+        return body
+    }
 
-    // Вспомогательный метод GET – возвращает список объектов указанного типа.
-    // queryParams – переменное количество пар "ключ=значение" для фильтрации.
+    private suspend inline fun <reified T> patch(table: String, id: String, body: T): T {
+        val jsonBody = json.encodeToString(body)
+        sendRequest("PATCH", table, jsonBody, id)
+        return body
+    }
+
+    private suspend fun softDelete(table: String, id: String) {
+        val bodyMap = mapOf("deleted_at" to java.time.LocalDateTime.now().toString())
+        val jsonBody = json.encodeToString(bodyMap)
+        sendRequest("PATCH", table, jsonBody, id)
+    }
+
     private suspend inline fun <reified T> get(
         table: String,
         vararg queryParams: Pair<String, String>
-    ): List<T> {
-        Timber.d("GET $table?${queryParams.joinToString("&") { "${it.first}=${it.second}" }}")
-        return client.get("$baseUrl/$table") {
-            header("apikey", apiKey)
-            header("Authorization", "Bearer $apiKey")
-            // Передаём параметры запроса (select, фильтры)
-            queryParams.forEach { (key, value) ->
-                parameter(key, value)
+    ): List<T> = withContext(Dispatchers.IO) {
+        val queryString = queryParams.joinToString("&") { "${it.first}=${it.second}" }
+        val url = "$baseUrl/$table?$queryString"
+        LoggerService.log("GET $url")
+
+        val connection = URL(url).openConnection() as HttpURLConnection
+        try {
+            connection.requestMethod = "GET"
+            connection.setRequestProperty("apikey", apiKey)
+            connection.setRequestProperty("Authorization", "Bearer $apiKey")
+            connection.setRequestProperty("Connection", "close")
+            connection.connectTimeout = 10_000
+            connection.readTimeout = 10_000
+
+            connection.connect()
+            val responseCode = connection.responseCode
+            val body = connection.inputStream.bufferedReader().use { it.readText() }
+            if (responseCode != 200) {
+                throw Exception("GET $url → $responseCode: $body")
             }
-        }.body()
-    }
-
-    // Вспомогательный метод POST – создаёт запись и возвращает её (с заполненным id).
-    private suspend inline fun <reified T> post(table: String, body: T): T {
-        Timber.d("POST $table")
-        return client.post("$baseUrl/$table") {
-            header("apikey", apiKey)
-            header("Authorization", "Bearer $apiKey")
-            header("Prefer", "return=representation")  // вернуть созданную запись
-            setBody(body)
-        }.body()
-    }
-
-    // Вспомогательный метод PATCH – обновляет запись по id.
-    private suspend inline fun <reified T> patch(table: String, id: String, body: T): T {
-        Timber.d("PATCH $table/$id")
-        return client.patch("$baseUrl/$table") {
-            header("apikey", apiKey)
-            header("Authorization", "Bearer $apiKey")
-            header("Prefer", "return=representation")
-            parameter("id", "eq.$id")      // фильтр: id = переданный UUID
-            setBody(body)
-        }.body()
-    }
-
-    // SoftDelete: устанавливает поле deleted_at в текущее время (запись остаётся в БД).
-    private suspend fun softDelete(table: String, id: String) {
-        Timber.d("SOFT DELETE $table/$id")
-        val now = java.time.LocalDateTime.now().toString()
-        client.patch("$baseUrl/$table") {
-            header("apikey", apiKey)
-            header("Authorization", "Bearer $apiKey")
-            parameter("id", "eq.$id")
-            setBody(mapOf("deleted_at" to now))
+            json.decodeFromString(body)
+        } finally {
+            connection.disconnect()
         }
     }
 
-    // ------------------- Client -------------------
+    // ------------------- Реализация интерфейсов (без изменений) -------------------
     override suspend fun createClient(client: Client) = post("clients", client)
     override suspend fun updateClient(client: Client) = patch("clients", client.id, client)
     override suspend fun deleteClient(client: Client) = softDelete("clients", client.id)
     override suspend fun getAllClients(): List<Client> =
         get("clients", "select" to "*", "deleted_at" to "is.null")
 
-    // ------------------- Role -------------------
     override suspend fun createRole(role: Role) = post("roles", role)
     override suspend fun getRoleByName(name: String): Role? =
         get<Role>("roles", "select" to "*", "role_name" to "eq.$name").firstOrNull()
 
-    // ------------------- User -------------------
     override suspend fun createUser(user: User) = post("users", user)
     override suspend fun updateUser(user: User) = patch("users", user.id, user)
     override suspend fun deleteUser(user: User) = softDelete("users", user.id)
@@ -107,7 +138,6 @@ class SupabaseRepository : ClientRepository, RoleRepository, UserRepository,
     override suspend fun getAllUsers(): List<User> =
         get("users", "select" to "*", "deleted_at" to "is.null")
 
-    // ------------------- Category -------------------
     override suspend fun createCategory(category: Category) = post("categories", category)
     override suspend fun updateCategory(category: Category) = patch("categories", category.id, category)
     override suspend fun deleteCategory(category: Category) = softDelete("categories", category.id)
@@ -116,7 +146,6 @@ class SupabaseRepository : ClientRepository, RoleRepository, UserRepository,
     override suspend fun getCategoryByName(name: String): Category? =
         get<Category>("categories", "select" to "*", "category_name" to "eq.$name").firstOrNull()
 
-    // ------------------- Service -------------------
     override suspend fun createService(service: Service) = post("services", service)
     override suspend fun updateService(service: Service) = patch("services", service.id, service)
     override suspend fun deleteService(service: Service) = softDelete("services", service.id)
@@ -127,7 +156,6 @@ class SupabaseRepository : ClientRepository, RoleRepository, UserRepository,
     override suspend fun getServiceByName(name: String): Service? =
         get<Service>("services", "select" to "*", "service_name" to "eq.$name").firstOrNull()
 
-    // ------------------- Price -------------------
     override suspend fun createPrice(price: Price) = post("prices", price)
     override suspend fun updatePrice(price: Price) = patch("prices", price.id, price)
     override suspend fun deletePrice(price: Price) = softDelete("prices", price.id)
@@ -136,7 +164,6 @@ class SupabaseRepository : ClientRepository, RoleRepository, UserRepository,
     override suspend fun getAllPrices(): List<Price> =
         get("prices", "select" to "*", "deleted_at" to "is.null")
 
-    // ------------------- Order -------------------
     override suspend fun createOrder(order: Order) = post("orders", order)
     override suspend fun updateOrder(order: Order) = patch("orders", order.id, order)
     override suspend fun deleteOrder(order: Order) = softDelete("orders", order.id)
@@ -147,10 +174,43 @@ class SupabaseRepository : ClientRepository, RoleRepository, UserRepository,
     override suspend fun getAllOrders(): List<Order> =
         get("orders", "select" to "*", "deleted_at" to "is.null")
 
-    // ------------------- OrderItem -------------------
     override suspend fun createOrderItem(item: OrderItem) = post("order_items", item)
     override suspend fun updateOrderItem(item: OrderItem) = patch("order_items", item.id, item)
     override suspend fun deleteOrderItem(item: OrderItem) = softDelete("order_items", item.id)
     override suspend fun getOrderItemsByOrderId(orderId: String): List<OrderItem> =
         get("order_items", "select" to "*", "order_id" to "eq.$orderId", "deleted_at" to "is.null")
+
+    // ---------- Проверки БД (IO) ----------
+    suspend fun checkConnection(): Boolean = withContext(Dispatchers.IO) {
+        LoggerService.log("Проверка подключения к БД...")
+        try {
+            val url = "$baseUrl/"
+            val connection = URL(url).openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.setRequestProperty("apikey", apiKey)
+            connection.setRequestProperty("Authorization", "Bearer $apiKey")
+            connection.connectTimeout = 5_000
+            connection.readTimeout = 5_000
+            val code = connection.responseCode
+            val success = code in 200..399
+            LoggerService.log("Ответ: $code")
+            success
+        } catch (e: Exception) {
+            LoggerService.log("Ошибка подключения: ${e.message}")
+            false
+        }
+    }
+
+    suspend fun checkTablesExist(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            get<Role>("roles", "select" to "id", "limit" to "1")
+            true
+        } catch (e: Exception) { false }
+    }
+
+    suspend fun checkAdminExists(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            get<User>("users", "select" to "id", "user_name" to "eq.admin").isNotEmpty()
+        } catch (e: Exception) { false }
+    }
 }

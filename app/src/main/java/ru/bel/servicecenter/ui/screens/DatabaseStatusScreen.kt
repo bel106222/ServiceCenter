@@ -5,17 +5,25 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+
+/**
+ * Состояния фабрики начальных данных
+ */
+sealed class FactoryState {
+    object Idle : FactoryState()
+    object Running : FactoryState()
+    object Success : FactoryState()
+    data class Error(val message: String) : FactoryState()
+}
+
 @Composable
 fun DatabaseStatusScreen(
     connectionOk: Boolean?,
     tablesExist: Boolean?,
     adminExists: Boolean?,
-    isFactoryRunning: Boolean,
-    factoryError: String?,
-    onCheckAgain: () -> Unit,
-    onRunFactory: (String) -> Unit,   // передаёт введённый пароль
-    onExit: () -> Unit,
-    onContinue: () -> Unit
+    factoryState: FactoryState,
+    onRunFactory: (String) -> Unit,
+    onExit: () -> Unit
 ) {
     var password by remember { mutableStateOf("") }
 
@@ -31,68 +39,70 @@ fun DatabaseStatusScreen(
 
         StatusRow("Подключение к серверу", connectionOk)
         Spacer(modifier = Modifier.height(8.dp))
-        StatusRow("Наличие таблиц", tablesExist)
+        StatusRow("Проверка БД", tablesExist)
         Spacer(modifier = Modifier.height(8.dp))
         StatusRow("Пользователь admin", adminExists)
 
-        // Показываем поле пароля и кнопку запуска фабрики, если нет admin и всё остальное готово
-        val canRunFactory = connectionOk == true && tablesExist == true && adminExists == false
+        Spacer(modifier = Modifier.height(24.dp))
 
-        if (canRunFactory) {
-            Spacer(modifier = Modifier.height(24.dp))
-            OutlinedTextField(
-                value = password,
-                onValueChange = { password = it },
-                label = { Text("Пароль администратора") },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !isFactoryRunning
+        // Случай: нет подключения
+        if (connectionOk == false) {
+            Text("Не удалось подключиться к БД", color = MaterialTheme.colorScheme.error)
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(onClick = onExit, modifier = Modifier.fillMaxWidth()) { Text("Выход") }
+            return@Column
+        }
+
+        // Случай: таблицы не существуют
+        if (tablesExist == false) {
+            Text(
+                "Таблицы не найдены. Обратитесь к администратору БД.",
+                color = MaterialTheme.colorScheme.error
             )
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(onClick = onExit, modifier = Modifier.fillMaxWidth()) { Text("Выход") }
+            return@Column
+        }
 
-            Button(
-                onClick = { onRunFactory(password) },
-                enabled = password.length >= 6 && !isFactoryRunning,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                if (isFactoryRunning) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                } else {
-                    Text("Запустить фабрику")
+        // Таблицы есть, admin отсутствует – нужна инициализация
+        if (tablesExist == true && adminExists == false) {
+            when (factoryState) {
+                FactoryState.Idle -> {
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        label = { Text("Пароль администратора") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(
+                        onClick = { onRunFactory(password) },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = password.length >= 6
+                    ) {
+                        Text("Ок")
+                    }
+                }
+
+                FactoryState.Running -> {
+                    CircularProgressIndicator()
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text("Подготовка БД...")
+                }
+
+                is FactoryState.Error -> {
+                    Text(
+                        "Ошибка инициализации: ${factoryState.message}. Обратитесь к администратору БД.",
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(onClick = onExit, modifier = Modifier.fillMaxWidth()) { Text("Выход") }
+                }
+
+                FactoryState.Success -> {
+                    // Сюда не попадаем, так как после успеха сразу переходим к стартовому экрану
                 }
             }
-
-            factoryError?.let {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(it, color = MaterialTheme.colorScheme.error)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        // Кнопки внизу
-        Button(onClick = onCheckAgain) {
-            Text("Проверить снова")
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        val allOk = connectionOk == true && tablesExist == true && adminExists == true
-        Button(
-            onClick = onContinue,
-            enabled = allOk,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Продолжить")
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Button(
-            onClick = onExit,
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Выход")
         }
     }
 }
