@@ -15,7 +15,7 @@ import ru.bel.servicecenter.models.Client
 @Composable
 fun ClientEditScreen(
     clientController: ClientController = viewModel(),
-    onSaved: () -> Unit,          // вызывается после успешного сохранения
+    onSaved: (Client) -> Unit,
     onCancel: () -> Unit
 ) {
     val currentClient by clientController.currentClient.collectAsState()
@@ -91,7 +91,7 @@ fun ClientEditScreen(
         // Перенаправление после успешного сохранения
         LaunchedEffect(message) {
             if (message == "Клиент создан" || message == "Клиент обновлён") {
-                onSaved()
+                onSaved(clientController.currentClient.value)
             }
         }
     }

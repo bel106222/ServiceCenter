@@ -4,7 +4,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- Таблица ролей
 CREATE TABLE IF NOT EXISTS public.roles (
                                             id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    role_name TEXT NOT NULL,
+    role_name TEXT UNIQUE NOT NULL,
     created_at TIMESTAMPTZ DEFAULT now(),
     deleted_at TIMESTAMPTZ
     );
@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS public.roles (
 -- Таблица клиентов
 CREATE TABLE IF NOT EXISTS public.clients (
                                               id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    client_title TEXT NOT NULL,
+    client_title TEXT UNIQUE NOT NULL,
     client_address TEXT,
     client_details TEXT,
     is_legal BOOLEAN DEFAULT false,
@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS public.users (
 -- Таблица категорий
 CREATE TABLE IF NOT EXISTS public.categories (
                                                  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    category_name TEXT NOT NULL,
+    category_name TEXT UNIQUE NOT NULL,
     created_at TIMESTAMPTZ DEFAULT now(),
     deleted_at TIMESTAMPTZ
     );
@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS public.categories (
 -- Таблица услуг
 CREATE TABLE IF NOT EXISTS public.services (
                                                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    service_name TEXT NOT NULL,
+    service_name TEXT UNIQUE NOT NULL,
     service_description TEXT,
     category_id UUID NOT NULL REFERENCES public.categories(id),
     is_fixprice BOOLEAN DEFAULT false,
@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS public.prices (
 -- Таблица заказов
 CREATE TABLE IF NOT EXISTS public.orders (
                                              id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    order_number TEXT NOT NULL,
+    order_number TEXT UNIQUE NOT NULL,
     order_description TEXT,
     user_id UUID NOT NULL REFERENCES public.users(id),
     order_sum REAL DEFAULT 0,

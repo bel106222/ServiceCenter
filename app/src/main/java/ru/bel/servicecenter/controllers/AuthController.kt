@@ -77,4 +77,16 @@ class AuthController : ViewModel() {
         _loggedUser.value = null
         Timber.i("Пользователь вышел из системы")
     }
+
+    suspend fun getRoleName(roleId: String): String? {
+        val admin = RepositoryProvider.roleRepo.getRoleByName("admin")
+        val eng = RepositoryProvider.roleRepo.getRoleByName("engineer")
+        val user = RepositoryProvider.roleRepo.getRoleByName("user")
+        return when (roleId) {
+            admin?.id -> "admin"
+            eng?.id -> "engineer"
+            user?.id -> "user"
+            else -> null
+        }
+    }
 }

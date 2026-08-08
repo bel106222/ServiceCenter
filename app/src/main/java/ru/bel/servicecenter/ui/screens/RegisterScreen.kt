@@ -1,5 +1,4 @@
 package ru.bel.servicecenter.ui.screens
-
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -11,12 +10,12 @@ import ru.bel.servicecenter.rules.ValidationRules
 
 /**
  * Экран регистрации нового пользователя.
- * После успешной регистрации можно автоматически выполнить вход или просто сообщить об успехе.
+ * После успешной регистрации AuthController автоматически выполняет вход,
+ * дальнейшая навигация управляется MainActivity.
  */
 @Composable
 fun RegisterScreen(
-    authController: AuthController = viewModel(),
-    onRegisterSuccess: () -> Unit
+    authController: AuthController = viewModel()
 ) {
     var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
@@ -80,7 +79,7 @@ fun RegisterScreen(
         )
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Ошибка регистрации (например, email уже существует)
+        // Ошибка регистрации
         authError?.let {
             Text(it, color = MaterialTheme.colorScheme.error)
             Spacer(modifier = Modifier.height(8.dp))
@@ -99,15 +98,6 @@ fun RegisterScreen(
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Зарегистрироваться")
-        }
-
-        // Успешная регистрация (если ошибка пуста и был вызов, но нужно отследить)
-        // Проще: после успешной регистрации можно сразу перейти к входу.
-        // Здесь для примера переходим при отсутствии ошибки после попытки.
-        LaunchedEffect(authError) {
-            if (authError == null && name.isNotEmpty()) {
-                onRegisterSuccess()
-            }
         }
     }
 }

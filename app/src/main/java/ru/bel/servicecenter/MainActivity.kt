@@ -1,26 +1,5 @@
 package ru.bel.servicecenter
-//
-//import android.os.Bundle
-//import android.widget.TextView
-//import androidx.activity.enableEdgeToEdge
-//import androidx.appcompat.app.AppCompatActivity
-//import androidx.core.view.ViewCompat
-//import androidx.core.view.WindowInsetsCompat
-//
-//class MainActivity : AppCompatActivity() {
-//    override fun onCreate(savedInstanceState: Bundle?) {
-//        super.onCreate(savedInstanceState)
-//        enableEdgeToEdge()
-//        setContentView(R.layout.activity_main)
-//        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { v, insets ->
-//            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-//            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
-//            insets
-//        }
-//        val textView = findViewById<TextView>(R.id.startText)
-//        textView.text = "Подключение к базе данных..."
-//    }
-//}
+
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -61,9 +40,13 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.ui.text.style.TextOverflow
 import ru.bel.servicecenter.controllers.StatusViewModel
 import ru.bel.servicecenter.ui.components.HistoryDialog
-import ru.bel.servicecenter.ui.screens.FactoryState
 import ru.bel.servicecenter.utils.DataValidator
+import ru.bel.servicecenter.ui.screens.FactoryState
+import ru.bel.servicecenter.ui.screens.SelectClientScreen
+import ru.bel.servicecenter.ui.screens.LoginScreen
+import ru.bel.servicecenter.ui.screens.NotAClientScreen
 import timber.log.Timber
+
 class MainActivity : ComponentActivity() {
 
     companion object {
@@ -79,6 +62,7 @@ class MainActivity : ComponentActivity() {
             AppTheme {
                 val statusViewModel = remember { StatusViewModel() }
 
+                // Настройка Timber (один раз)
                 LaunchedEffect(Unit) {
                     Timber.uprootAll()
                     Timber.plant(StatusTree())
@@ -88,40 +72,30 @@ class MainActivity : ComponentActivity() {
                 val navController = rememberNavController()
                 val coroutineScope = rememberCoroutineScope()
 
+                // Состояния проверок
                 var connectionOk by remember { mutableStateOf<Boolean?>(null) }
-                var tablesExist by remember { mutableStateOf<Boolean?>(null) }
                 var adminExists by remember { mutableStateOf<Boolean?>(null) }
                 var showApp by remember { mutableStateOf(false) }
                 var factoryState by remember { mutableStateOf<FactoryState>(FactoryState.Idle) }
-                var factoryError by remember { mutableStateOf<String?>(null) }
                 var showHistoryDialog by remember { mutableStateOf(false) }
 
-                fun runChecks() {
-                    coroutineScope.launch {
-                        connectionOk = null; tablesExist = null; adminExists = null
-                        val conn = RepositoryProvider.checkConnection()
-                        connectionOk = conn
-                        if (conn) {
-                            LoggerService.log("Подключение установлено")
-                            LoggerService.log("Проверка наличия таблиц в БД")
-                            val tables = RepositoryProvider.checkTablesExist()
-                            tablesExist = tables
-                            if (tables) {
-                                LoggerService.log("Таблицы найдены, проверка пользователя admin")
-                                adminExists = RepositoryProvider.checkAdminExists()
-                                LoggerService.log(if (adminExists == true) "admin существует" else "admin отсутствует")
-                            } else {
-                                adminExists = false
-                                LoggerService.log("Таблицы не найдены")
-                            }
-                        } else {
-                            tablesExist = false; adminExists = false
-                            LoggerService.log("Не удалось подключиться к БД")
-                        }
+                // Проверка при запуске: сначала подключение, потом admin
+                LaunchedEffect(Unit) {
+                    val conn = RepositoryProvider.checkConnection()
+                    connectionOk = conn
+                    if (conn) {
+                        adminExists = RepositoryProvider.checkAdminExists()
+                    } else {
+                        adminExists = false
                     }
                 }
 
-                LaunchedEffect(Unit) { runChecks() }
+                // Автоматический переход, если администратор уже существует
+                LaunchedEffect(adminExists) {
+                    if (adminExists == true) {
+                        showApp = true
+                    }
+                }
 
                 Scaffold(
                     bottomBar = {
@@ -135,7 +109,6 @@ class MainActivity : ComponentActivity() {
                         if (!showApp) {
                             DatabaseStatusScreen(
                                 connectionOk = connectionOk,
-                                tablesExist = tablesExist,
                                 adminExists = adminExists,
                                 factoryState = factoryState,
                                 onRunFactory = { password ->
@@ -147,7 +120,6 @@ class MainActivity : ComponentActivity() {
                                                 val adminId = factory.createInitialStructure()
                                                 factory.setAdminPassword(adminId, password)
 
-                                                // Проверка целостности
                                                 val validator = DataValidator()
                                                 if (!validator.validate()) {
                                                     throw Exception("Проверка целостности не пройдена – смотрите статусную строку")
@@ -155,7 +127,7 @@ class MainActivity : ComponentActivity() {
                                             }
                                             adminExists = true
                                             factoryState = FactoryState.Success
-                                            showApp = true   // автоматический переход на стартовый экран
+                                            showApp = true   // автоматический переход к стартовому экрану
                                         } catch (e: Exception) {
                                             factoryState = FactoryState.Error(e.message ?: "Неизвестная ошибка")
                                             LoggerService.log("Ошибка фабрики: ${e.message}")
@@ -165,8 +137,27 @@ class MainActivity : ComponentActivity() {
                                 onExit = { finish() }
                             )
                         } else {
+                            // Основное приложение
                             val authController = remember { AuthController() }
                             val adminController = remember { AdminController() }
+
+                            val loggedUser by authController.loggedUser.collectAsState()
+
+                            // После успешного входа определяем роль и переходим на нужный экран
+                            LaunchedEffect(loggedUser) {
+                                loggedUser?.let { user ->
+                                    val roleName = authController.getRoleName(user.role_id)
+                                    when (roleName) {
+                                        "user" -> {
+                                            if (user.client_id.isNullOrBlank()) {
+                                                navController.navigate("not_a_client")  // сначала предупреждение
+                                            } else {
+                                                navController.navigate("orders")
+                                            }
+                                        }
+                                    }
+                                }
+                            }
 
                             NavHost(navController, startDestination = "start") {
                                 composable("start") {
@@ -174,25 +165,11 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 composable("login") {
-                                    LoginScreen(
-                                        authController = authController,
-                                        onLoginSuccess = {
-                                            navController.navigate("clients") {
-                                                popUpTo("start") { inclusive = true }
-                                            }
-                                        }
-                                    )
+                                    LoginScreen(authController = authController)
                                 }
 
                                 composable("register") {
-                                    RegisterScreen(
-                                        authController = authController,
-                                        onRegisterSuccess = {
-                                            navController.navigate("login") {
-                                                popUpTo("start") { inclusive = true }
-                                            }
-                                        }
-                                    )
+                                    RegisterScreen(authController = authController)
                                 }
 
                                 composable("admin") {
@@ -202,13 +179,34 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
 
+                                composable("not_a_client") {
+                                    NotAClientScreen(
+                                        onContinue = {
+                                            navController.navigate("select_client") {
+                                                popUpTo("not_a_client") { inclusive = true }
+                                            }
+                                        }
+                                    )
+                                }
+
+                                composable("select_client") {
+                                    val currentUser by authController.loggedUser.collectAsState()
+                                    currentUser?.let { user ->
+                                        SelectClientScreen(
+                                            currentUser = user,
+                                            onClientBound = {
+                                                navController.navigate("orders") {
+                                                    popUpTo("select_client") { inclusive = true }
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
+
                                 // ------------------- Клиенты -------------------
                                 composable("clients") {
                                     val currentUser by authController.loggedUser.collectAsState()
-                                    val clientController = remember { ClientController() }
-                                    LaunchedEffect(currentUser) {
-                                        clientController.currentAuthUser = currentUser
-                                    }
+                                    val clientController = remember { ClientController().apply { currentAuthUser = currentUser } }
                                     ClientsListScreen(
                                         clientController = clientController,
                                         onEditClient = { client ->
@@ -221,10 +219,7 @@ class MainActivity : ComponentActivity() {
 
                                 composable("client_edit") {
                                     val currentUser by authController.loggedUser.collectAsState()
-                                    val clientController = remember { ClientController() }
-                                    LaunchedEffect(currentUser) {
-                                        clientController.currentAuthUser = currentUser
-                                    }
+                                    val clientController = remember { ClientController().apply { currentAuthUser = currentUser } }
                                     ClientEditScreen(
                                         clientController = clientController,
                                         onSaved = { navController.popBackStack() },
@@ -235,10 +230,7 @@ class MainActivity : ComponentActivity() {
                                 // ------------------- Категории -------------------
                                 composable("categories") {
                                     val currentUser by authController.loggedUser.collectAsState()
-                                    val catController = remember { CategoryController() }
-                                    LaunchedEffect(currentUser) {
-                                        catController.currentAuthUser = currentUser
-                                    }
+                                    val catController = remember { CategoryController().apply { currentAuthUser = currentUser } }
                                     CategoriesListScreen(
                                         categoryController = catController,
                                         onEditCategory = { cat ->
@@ -251,10 +243,7 @@ class MainActivity : ComponentActivity() {
 
                                 composable("category_edit") {
                                     val currentUser by authController.loggedUser.collectAsState()
-                                    val catController = remember { CategoryController() }
-                                    LaunchedEffect(currentUser) {
-                                        catController.currentAuthUser = currentUser
-                                    }
+                                    val catController = remember { CategoryController().apply { currentAuthUser = currentUser } }
                                     CategoryEditScreen(
                                         categoryController = catController,
                                         onSaved = { navController.popBackStack() },
@@ -265,10 +254,7 @@ class MainActivity : ComponentActivity() {
                                 // ------------------- Услуги -------------------
                                 composable("services") {
                                     val currentUser by authController.loggedUser.collectAsState()
-                                    val serviceController = remember { ServiceController() }
-                                    LaunchedEffect(currentUser) {
-                                        serviceController.currentAuthUser = currentUser
-                                    }
+                                    val serviceController = remember { ServiceController().apply { currentAuthUser = currentUser } }
                                     ServicesListScreen(
                                         serviceController = serviceController,
                                         onEditService = { srv ->
@@ -281,10 +267,7 @@ class MainActivity : ComponentActivity() {
 
                                 composable("service_edit") {
                                     val currentUser by authController.loggedUser.collectAsState()
-                                    val serviceController = remember { ServiceController() }
-                                    LaunchedEffect(currentUser) {
-                                        serviceController.currentAuthUser = currentUser
-                                    }
+                                    val serviceController = remember { ServiceController().apply { currentAuthUser = currentUser } }
                                     ServiceEditScreen(
                                         serviceController = serviceController,
                                         onSaved = { navController.popBackStack() },
@@ -295,10 +278,7 @@ class MainActivity : ComponentActivity() {
                                 // ------------------- Цены -------------------
                                 composable("prices") {
                                     val currentUser by authController.loggedUser.collectAsState()
-                                    val priceController = remember { PriceController() }
-                                    LaunchedEffect(currentUser) {
-                                        priceController.currentAuthUser = currentUser
-                                    }
+                                    val priceController = remember { PriceController().apply { currentAuthUser = currentUser } }
                                     PriceListScreen(
                                         priceController = priceController,
                                         onEditPrice = { price ->
@@ -311,10 +291,7 @@ class MainActivity : ComponentActivity() {
 
                                 composable("price_edit") {
                                     val currentUser by authController.loggedUser.collectAsState()
-                                    val priceController = remember { PriceController() }
-                                    LaunchedEffect(currentUser) {
-                                        priceController.currentAuthUser = currentUser
-                                    }
+                                    val priceController = remember { PriceController().apply { currentAuthUser = currentUser } }
                                     PriceEditScreen(
                                         priceController = priceController,
                                         onSaved = { navController.popBackStack() },
@@ -325,10 +302,7 @@ class MainActivity : ComponentActivity() {
                                 // ------------------- Заказы -------------------
                                 composable("orders") {
                                     val currentUser by authController.loggedUser.collectAsState()
-                                    val orderController = remember { OrderController() }
-                                    LaunchedEffect(currentUser) {
-                                        orderController.currentAuthUser = currentUser
-                                    }
+                                    val orderController = remember { OrderController().apply { currentAuthUser = currentUser } }
                                     OrdersListScreen(
                                         orderController = orderController,
                                         onEditOrder = { order ->
@@ -341,10 +315,7 @@ class MainActivity : ComponentActivity() {
 
                                 composable("order_edit") {
                                     val currentUser by authController.loggedUser.collectAsState()
-                                    val orderController = remember { OrderController() }
-                                    LaunchedEffect(currentUser) {
-                                        orderController.currentAuthUser = currentUser
-                                    }
+                                    val orderController = remember { OrderController().apply { currentAuthUser = currentUser } }
                                     OrderEditScreen(
                                         orderController = orderController,
                                         onSaved = { navController.popBackStack() },
@@ -359,10 +330,11 @@ class MainActivity : ComponentActivity() {
                                 ) { backStackEntry ->
                                     val currentUser by authController.loggedUser.collectAsState()
                                     val orderId = backStackEntry.arguments?.getString("orderId") ?: ""
-                                    val orderItemController = remember { OrderItemController() }
-                                    orderItemController.currentOrderId = orderId
-                                    LaunchedEffect(currentUser) {
-                                        orderItemController.currentAuthUser = currentUser
+                                    val orderItemController = remember {
+                                        OrderItemController().apply {
+                                            this.currentOrderId = orderId
+                                            this.currentAuthUser = currentUser
+                                        }
                                     }
                                     OrderItemListScreen(
                                         orderItemController = orderItemController,
@@ -380,10 +352,11 @@ class MainActivity : ComponentActivity() {
                                 ) { backStackEntry ->
                                     val currentUser by authController.loggedUser.collectAsState()
                                     val orderId = backStackEntry.arguments?.getString("orderId") ?: ""
-                                    val orderItemController = remember { OrderItemController() }
-                                    orderItemController.currentOrderId = orderId
-                                    LaunchedEffect(currentUser) {
-                                        orderItemController.currentAuthUser = currentUser
+                                    val orderItemController = remember {
+                                        OrderItemController().apply {
+                                            this.currentOrderId = orderId
+                                            this.currentAuthUser = currentUser
+                                        }
                                     }
                                     OrderItemEditScreen(
                                         orderItemController = orderItemController,
@@ -392,9 +365,11 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
                             } // NavHost
-                        } // else
+                        }
                     }
                 } // Scaffold
+
+                // Диалог истории сообщений (поверх всего)
                 if (showHistoryDialog) {
                     val logs by statusViewModel.logs.collectAsState()
                     HistoryDialog(

@@ -44,6 +44,23 @@ class ClientController : ViewModel() {
             }
         }
     }
+    private suspend fun canModifyClient(user: User, client: Client, isNew: Boolean): Boolean {
+        val adminRole = RepositoryProvider.roleRepo.getRoleByName("admin")
+        val engRole = RepositoryProvider.roleRepo.getRoleByName("engineer")
+        val userRole = RepositoryProvider.roleRepo.getRoleByName("user")
+        return when (user.role_id) {
+            adminRole?.id -> true
+            engRole?.id -> true
+            userRole?.id -> isNew && user.client_id == null   // разрешаем создать первого клиента
+            else -> false
+        }
+    }
+
+    private suspend fun canDeleteClient(user: User, client: Client): Boolean {
+        val adminRole = RepositoryProvider.roleRepo.getRoleByName("admin")
+        val engRole = RepositoryProvider.roleRepo.getRoleByName("engineer")
+        return user.role_id == adminRole?.id || user.role_id == engRole?.id
+    }
 
     fun saveClient() {
         val client = _currentClient.value
@@ -118,5 +135,15 @@ class ClientController : ViewModel() {
         val admin = RepositoryProvider.roleRepo.getRoleByName("admin")
         val eng = RepositoryProvider.roleRepo.getRoleByName("engineer")
         return user.role_id == admin?.id || user.role_id == eng?.id
+    }
+
+    fun initNewClient(defaultTitle: String = "") {
+        _currentClient.value = Client(
+            client_title = defaultTitle,
+            client_address = "",
+            client_details = "",
+            is_legal = false
+        )
+        _errors.value = emptyMap()
     }
 }

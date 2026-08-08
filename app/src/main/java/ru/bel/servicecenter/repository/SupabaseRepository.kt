@@ -193,7 +193,7 @@ class SupabaseRepository : ClientRepository, RoleRepository, UserRepository,
             connection.readTimeout = 5_000
             val code = connection.responseCode
             val success = code in 200..399
-            LoggerService.log("Ответ: $code")
+            LoggerService.log(if (success) "Подключение установлено (код $code)" else "Ошибка подключения: код $code")
             success
         } catch (e: Exception) {
             LoggerService.log("Ошибка подключения: ${e.message}")
@@ -201,16 +201,40 @@ class SupabaseRepository : ClientRepository, RoleRepository, UserRepository,
         }
     }
 
-    suspend fun checkTablesExist(): Boolean = withContext(Dispatchers.IO) {
-        try {
-            get<Role>("roles", "select" to "id", "limit" to "1")
-            true
-        } catch (e: Exception) { false }
-    }
-
     suspend fun checkAdminExists(): Boolean = withContext(Dispatchers.IO) {
         try {
-            get<User>("users", "select" to "id", "user_name" to "eq.admin").isNotEmpty()
-        } catch (e: Exception) { false }
+            LoggerService.log("Проверка наличия администратора...")
+            // Запрашиваем user_name вместо id
+            val url = "$baseUrl/users?select=user_name&user_name=eq.admin"
+            val connection = URL(url).openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.setRequestProperty("apikey", apiKey)
+            connection.setRequestProperty("Authorization", "Bearer $apiKey")
+            connection.connectTimeout = 10_000
+            connection.readTimeout = 10_000
+
+            val responseCode = connection.responseCode
+            val body = if (responseCode == 200) {
+                connection.inputStream.bufferedReader().readText()
+            } else {
+                connection.errorStream?.bufferedReader()?.readText() ?: ""
+            }
+            connection.disconnect()
+
+            LoggerService.log("Ответ сервера: $responseCode – $body")
+
+            if (responseCode == 200) {
+                // Теперь проверяем наличие "user_name":"admin" в ответе
+                val exists = body.contains("\"user_name\":\"admin\"")
+                LoggerService.log(if (exists) "Администратор найден" else "Администратор отсутствует")
+                exists
+            } else {
+                LoggerService.log("Ошибка запроса: $responseCode")
+                false
+            }
+        } catch (e: Exception) {
+            LoggerService.log("Ошибка проверки администратора: ${e.message}")
+            false
+        }
     }
 }
