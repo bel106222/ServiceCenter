@@ -62,7 +62,6 @@ class MainActivity : ComponentActivity() {
             AppTheme {
                 val statusViewModel = remember { StatusViewModel() }
 
-                // Настройка Timber (один раз)
                 LaunchedEffect(Unit) {
                     Timber.uprootAll()
                     Timber.plant(StatusTree())
@@ -72,14 +71,12 @@ class MainActivity : ComponentActivity() {
                 val navController = rememberNavController()
                 val coroutineScope = rememberCoroutineScope()
 
-                // Состояния проверок
                 var connectionOk by remember { mutableStateOf<Boolean?>(null) }
                 var adminExists by remember { mutableStateOf<Boolean?>(null) }
                 var showApp by remember { mutableStateOf(false) }
                 var factoryState by remember { mutableStateOf<FactoryState>(FactoryState.Idle) }
                 var showHistoryDialog by remember { mutableStateOf(false) }
 
-                // Проверка при запуске: сначала подключение, потом admin
                 LaunchedEffect(Unit) {
                     val conn = RepositoryProvider.checkConnection()
                     connectionOk = conn
@@ -90,7 +87,6 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                // Автоматический переход, если администратор уже существует
                 LaunchedEffect(adminExists) {
                     if (adminExists == true) {
                         showApp = true
@@ -119,7 +115,6 @@ class MainActivity : ComponentActivity() {
                                                 val factory = DataFactory()
                                                 val adminId = factory.createInitialStructure()
                                                 factory.setAdminPassword(adminId, password)
-
                                                 val validator = DataValidator()
                                                 if (!validator.validate()) {
                                                     throw Exception("Проверка целостности не пройдена – смотрите статусную строку")
@@ -127,7 +122,7 @@ class MainActivity : ComponentActivity() {
                                             }
                                             adminExists = true
                                             factoryState = FactoryState.Success
-                                            showApp = true   // автоматический переход к стартовому экрану
+                                            showApp = true
                                         } catch (e: Exception) {
                                             factoryState = FactoryState.Error(e.message ?: "Неизвестная ошибка")
                                             LoggerService.log("Ошибка фабрики: ${e.message}")
@@ -137,22 +132,28 @@ class MainActivity : ComponentActivity() {
                                 onExit = { finish() }
                             )
                         } else {
-                            // Основное приложение
                             val authController = remember { AuthController() }
                             val adminController = remember { AdminController() }
-
                             val loggedUser by authController.loggedUser.collectAsState()
 
-                            // После успешного входа определяем роль и переходим на нужный экран
                             LaunchedEffect(loggedUser) {
                                 loggedUser?.let { user ->
                                     val roleName = authController.getRoleName(user.role_id)
                                     when (roleName) {
                                         "user" -> {
                                             if (user.client_id.isNullOrBlank()) {
-                                                navController.navigate("not_a_client")  // сначала предупреждение
+                                                navController.navigate("not_a_client") {
+                                                    popUpTo("start") { inclusive = true }
+                                                }
                                             } else {
-                                                navController.navigate("orders")
+                                                navController.navigate("dashboard") {
+                                                    popUpTo("start") { inclusive = true }
+                                                }
+                                            }
+                                        }
+                                        else -> {
+                                            navController.navigate("dashboard") {
+                                                popUpTo("start") { inclusive = true }
                                             }
                                         }
                                     }
@@ -172,13 +173,6 @@ class MainActivity : ComponentActivity() {
                                     RegisterScreen(authController = authController)
                                 }
 
-                                composable("admin") {
-                                    AdminScreen(
-                                        adminController = adminController,
-                                        onBack = { navController.popBackStack() }
-                                    )
-                                }
-
                                 composable("not_a_client") {
                                     NotAClientScreen(
                                         onContinue = {
@@ -195,7 +189,7 @@ class MainActivity : ComponentActivity() {
                                         SelectClientScreen(
                                             currentUser = user,
                                             onClientBound = {
-                                                navController.navigate("orders") {
+                                                navController.navigate("dashboard") {
                                                     popUpTo("select_client") { inclusive = true }
                                                 }
                                             }
@@ -203,7 +197,87 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
 
-                                // ------------------- Клиенты -------------------
+                                composable("dashboard") {
+                                    val currentUser by authController.loggedUser.collectAsState()
+                                    currentUser?.let { user ->
+                                        val roleName = remember { mutableStateOf<String?>(null) }
+                                        LaunchedEffect(user) {
+                                            roleName.value = authController.getRoleName(user.role_id)
+                                        }
+                                        roleName.value?.let { role ->
+                                            val items = when (role) {
+                                                "user" -> listOf(
+                                                    DashboardItem("Профиль") { navController.navigate("user_profile") },
+                                                    DashboardItem("Мои заказы") { navController.navigate("orders") }
+                                                )
+                                                "engineer" -> listOf(
+                                                    DashboardItem("Профиль") { navController.navigate("engineer_profile") },
+                                                    DashboardItem("Клиенты") { navController.navigate("clients") },
+                                                    DashboardItem("Категории") { navController.navigate("categories") },
+                                                    DashboardItem("Цены") { navController.navigate("prices") },
+                                                    DashboardItem("Услуги") { navController.navigate("services") },
+                                                    DashboardItem("Заказы") { navController.navigate("orders") }
+                                                )
+                                                "admin" -> listOf(
+                                                    DashboardItem("Профиль") { navController.navigate("admin_profile") },
+                                                    DashboardItem("Пользователи") { navController.navigate("users") },
+                                                    DashboardItem("Клиенты") { navController.navigate("clients") },
+                                                    DashboardItem("Категории") { navController.navigate("categories") },
+                                                    DashboardItem("Цены") { navController.navigate("prices") },
+                                                    DashboardItem("Услуги") { navController.navigate("services") },
+                                                    DashboardItem("Заказы") { navController.navigate("orders") },
+                                                    DashboardItem("База данных") { navController.navigate("admin_database") }
+                                                )
+                                                else -> emptyList()
+                                            }
+                                            DashboardScreen(items = items)
+                                        }
+                                    }
+                                }
+
+                                composable("user_profile") {
+                                    val currentUser by authController.loggedUser.collectAsState()
+                                    currentUser?.let { user ->
+                                        UserProfileScreen(
+                                            currentUser = user,
+                                            onBack = { navController.popBackStack() }
+                                        )
+                                    }
+                                }
+
+                                composable("engineer_profile") {
+                                    val currentUser by authController.loggedUser.collectAsState()
+                                    currentUser?.let { user ->
+                                        EngineerProfileScreen(
+                                            currentUser = user,
+                                            onBack = { navController.popBackStack() }
+                                        )
+                                    }
+                                }
+
+                                composable("admin_profile") {
+                                    val currentUser by authController.loggedUser.collectAsState()
+                                    currentUser?.let { user ->
+                                        AdminProfileScreen(
+                                            currentUser = user,
+                                            onBack = { navController.popBackStack() }
+                                        )
+                                    }
+                                }
+
+                                composable("users") {
+                                    val currentUser by authController.loggedUser.collectAsState()
+                                    val userController = remember { UserController().apply { currentAuthUser = currentUser } }
+                                    UsersListScreen(
+                                        userController = userController,
+                                        onEditUser = { user ->
+                                            userController.setEditingUser(user)
+                                            navController.navigate("user_edit")
+                                        },
+                                        onBack = { navController.popBackStack() }
+                                    )
+                                }
+
                                 composable("clients") {
                                     val currentUser by authController.loggedUser.collectAsState()
                                     val clientController = remember { ClientController().apply { currentAuthUser = currentUser } }
@@ -227,7 +301,6 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
 
-                                // ------------------- Категории -------------------
                                 composable("categories") {
                                     val currentUser by authController.loggedUser.collectAsState()
                                     val catController = remember { CategoryController().apply { currentAuthUser = currentUser } }
@@ -251,7 +324,6 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
 
-                                // ------------------- Услуги -------------------
                                 composable("services") {
                                     val currentUser by authController.loggedUser.collectAsState()
                                     val serviceController = remember { ServiceController().apply { currentAuthUser = currentUser } }
@@ -275,7 +347,6 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
 
-                                // ------------------- Цены -------------------
                                 composable("prices") {
                                     val currentUser by authController.loggedUser.collectAsState()
                                     val priceController = remember { PriceController().apply { currentAuthUser = currentUser } }
@@ -299,7 +370,6 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
 
-                                // ------------------- Заказы -------------------
                                 composable("orders") {
                                     val currentUser by authController.loggedUser.collectAsState()
                                     val orderController = remember { OrderController().apply { currentAuthUser = currentUser } }
@@ -323,7 +393,6 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
 
-                                // ------------------- Позиции заказа -------------------
                                 composable(
                                     "order_items/{orderId}",
                                     arguments = listOf(navArgument("orderId") { type = NavType.StringType })
@@ -364,12 +433,18 @@ class MainActivity : ComponentActivity() {
                                         onCancel = { navController.popBackStack() }
                                     )
                                 }
+
+                                composable("admin_database") {
+                                    AdminDatabaseScreen(
+                                        adminController = adminController,
+                                        onBack = { navController.popBackStack() }
+                                    )
+                                }
                             } // NavHost
                         }
                     }
                 } // Scaffold
 
-                // Диалог истории сообщений (поверх всего)
                 if (showHistoryDialog) {
                     val logs by statusViewModel.logs.collectAsState()
                     HistoryDialog(

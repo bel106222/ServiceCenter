@@ -29,31 +29,32 @@ class DataFactory {
         RepositoryProvider.roleRepo.createRole(engRole)
         RepositoryProvider.roleRepo.createRole(userRole)
         LoggerService.log("Роли созданы (admin, engineer, user)")
-        //delay(50)
-        // ==================== 2. Пользователь-администратор ====================
+
+        // ==================== 2. Базовый клиент ====================
+        LoggerService.log("Создание базового клиента...")
+        val mainClient = Client(
+            client_title = "Сервисный центр",
+            client_address = "г. Ставрополь, ул. Ленина, 1",
+            client_details = "Банковские реквизиты ИНН КПП ОГРН р/с",
+            is_legal = true
+        )
+        RepositoryProvider.clientRepo.createClient(mainClient)
+        LoggerService.log("Клиент создан")
+
+        // ==================== 3. Пользователь-администратор ====================
         LoggerService.log("Создание администратора...")
         val adminUser = User(
             user_name = "admin",
             user_email = "admin@service.ru",
-            user_phone = "+7",               // можно заменить на +79991112233
+            user_phone = "+7",
             user_password = "",              // пароль будет установлен позже
-            role_id = adminRole.id
+            role_id = adminRole.id,
+            client_id = mainClient.id
         )
         RepositoryProvider.userRepo.createUser(adminUser)
         LoggerService.log("Администратор создан (id=${adminUser.id})")
-        //delay(50)
-        // ==================== 3. Базовый клиент ====================
-        LoggerService.log("Создание базового клиента...")
-        RepositoryProvider.clientRepo.createClient(
-            Client(
-                client_title = "Сервисный центр",
-                client_address = "г. Ставрополь, ул. Ленина, 1",
-                client_details = "Банковские реквизиты ИНН КПП ОГРН р/с",
-                is_legal = true
-            )
-        )
-        LoggerService.log("Клиент создан")
-        //delay(50)
+
+
         // ==================== 4. Категории ====================
         LoggerService.log("Создание категорий...")
         val categoryNames = listOf(
@@ -72,7 +73,7 @@ class DataFactory {
             cat   // возвращаем объект с уже заполненным id
         }
         LoggerService.log("Категории созданы (${categories.size} шт.)")
-        //delay(50)
+
         // ==================== 5. Услуги ====================
         LoggerService.log("Создание услуг...")
 
@@ -116,7 +117,7 @@ class DataFactory {
             servicesMap[serviceName] = service   // запоминаем для цен
         }
         LoggerService.log("Услуги созданы (${servicesMap.size} шт.)")
-        //delay(50)
+
         // ==================== 6. Цены ====================
         LoggerService.log("Создание цен...")
         val pricesData = listOf(
@@ -155,7 +156,7 @@ class DataFactory {
         }
         LoggerService.log("Цены созданы (${pricesData.size} шт.)")
         LoggerService.log("=== Фабрика успешно завершена ===")
-        //delay(50)
+
         // Возвращаем id администратора для последующей установки пароля
         return adminUser.id
     }

@@ -53,12 +53,5 @@ fun StartScreen(onNavigate: (String) -> Unit) {
             Text("Регистрация")
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Кнопка для перехода в админ-панель (будет доступна только админу после входа,
-        // но здесь просто для демонстрации; реальная проверка внутри AdminScreen)
-        TextButton(onClick = { onNavigate("admin") }) {
-            Text("Панель администратора")
-        }
     }
 }

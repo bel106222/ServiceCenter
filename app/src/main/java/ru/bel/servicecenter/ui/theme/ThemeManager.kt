@@ -6,7 +6,7 @@ import androidx.compose.ui.graphics.Color
 // Простейший менеджер смены темы (светлая/тёмная).
 object ThemeManager {
     // Реактивное состояние, определяющее текущую тему
-    var isDark by mutableStateOf(false)
+    var isDark by mutableStateOf(true)
 }
 
 // Определяем цветовые схемы

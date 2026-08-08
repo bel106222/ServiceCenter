@@ -47,14 +47,18 @@ class AuthController : ViewModel() {
     fun register(name: String, email: String, phone: String, password: String) {
         viewModelScope.launch {
             try {
+                // Проверка уникальности email
                 val existing = RepositoryProvider.userRepo.getUserByEmail(email)
                 if (existing != null) {
                     _error.value = "Пользователь с таким email уже существует"
                     return@launch
                 }
+                // Получаем роль "user"
                 val userRole = RepositoryProvider.roleRepo.getRoleByName("user")
                     ?: throw IllegalStateException("Роль 'user' не найдена в БД")
+                // Хешируем пароль
                 val hashed = BCrypt.hashpw(password, BCrypt.gensalt())
+                // Создаём пользователя (client_id = null)
                 val newUser = User(
                     user_name = name,
                     user_email = email,
@@ -64,8 +68,10 @@ class AuthController : ViewModel() {
                     client_id = null
                 )
                 RepositoryProvider.userRepo.createUser(newUser)
+                // Автоматический вход после регистрации
+                _loggedUser.value = newUser
                 _error.value = null
-                Timber.i("Зарегистрирован новый пользователь: ${newUser.user_email}")
+                Timber.i("Зарегистрирован и выполнен вход: ${newUser.user_email}")
             } catch (e: Exception) {
                 _error.value = "Ошибка регистрации: ${e.message}"
                 Timber.e(e, "Ошибка регистрации")
