@@ -39,12 +39,14 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Scaffold
 import androidx.compose.ui.text.style.TextOverflow
 import ru.bel.servicecenter.controllers.StatusViewModel
+import ru.bel.servicecenter.controllers.UserManagementViewModel
 import ru.bel.servicecenter.ui.components.HistoryDialog
 import ru.bel.servicecenter.utils.DataValidator
 import ru.bel.servicecenter.ui.screens.FactoryState
 import ru.bel.servicecenter.ui.screens.SelectClientScreen
 import ru.bel.servicecenter.ui.screens.LoginScreen
 import ru.bel.servicecenter.ui.screens.NotAClientScreen
+import androidx.lifecycle.viewmodel.compose.viewModel
 import timber.log.Timber
 
 class MainActivity : ComponentActivity() {
@@ -134,6 +136,9 @@ class MainActivity : ComponentActivity() {
                         } else {
                             val authController = remember { AuthController() }
                             val adminController = remember { AdminController() }
+                            val userController = remember { UserController() }
+                            val userManagementViewModel = remember { UserManagementViewModel() }
+                            val clientManagementViewModel = remember { ClientManagementViewModel() }
                             val loggedUser by authController.loggedUser.collectAsState()
 
                             LaunchedEffect(loggedUser) {
@@ -267,24 +272,40 @@ class MainActivity : ComponentActivity() {
 
                                 composable("users") {
                                     val currentUser by authController.loggedUser.collectAsState()
-                                    val userController = remember { UserController().apply { currentAuthUser = currentUser } }
+                                    LaunchedEffect(currentUser) {
+                                        userManagementViewModel.userController.currentAuthUser = currentUser
+                                    }
                                     UsersListScreen(
-                                        userController = userController,
+                                        viewModel = userManagementViewModel,
                                         onEditUser = { user ->
-                                            userController.setEditingUser(user)
+                                            userManagementViewModel.userController.setEditingUser(user)
                                             navController.navigate("user_edit")
                                         },
                                         onBack = { navController.popBackStack() }
                                     )
                                 }
 
+                                composable("user_edit") {
+                                    val currentUser by authController.loggedUser.collectAsState()
+                                    LaunchedEffect(currentUser) {
+                                        userManagementViewModel.userController.currentAuthUser = currentUser
+                                    }
+                                    UserEditScreen(
+                                        viewModel = userManagementViewModel,
+                                        onSaved = { navController.popBackStack() },
+                                        onCancel = { navController.popBackStack() }
+                                    )
+                                }
+
                                 composable("clients") {
                                     val currentUser by authController.loggedUser.collectAsState()
-                                    val clientController = remember { ClientController().apply { currentAuthUser = currentUser } }
+                                    LaunchedEffect(currentUser) {
+                                        clientManagementViewModel.clientController.currentAuthUser = currentUser
+                                    }
                                     ClientsListScreen(
-                                        clientController = clientController,
+                                        viewModel = clientManagementViewModel,
                                         onEditClient = { client ->
-                                            clientController.setEditingClient(client)
+                                            clientManagementViewModel.clientController.setEditingClient(client)
                                             navController.navigate("client_edit")
                                         },
                                         onBack = { navController.popBackStack() }
@@ -293,9 +314,11 @@ class MainActivity : ComponentActivity() {
 
                                 composable("client_edit") {
                                     val currentUser by authController.loggedUser.collectAsState()
-                                    val clientController = remember { ClientController().apply { currentAuthUser = currentUser } }
+                                    LaunchedEffect(currentUser) {
+                                        clientManagementViewModel.clientController.currentAuthUser = currentUser
+                                    }
                                     ClientEditScreen(
-                                        clientController = clientController,
+                                        viewModel = clientManagementViewModel,
                                         onSaved = { navController.popBackStack() },
                                         onCancel = { navController.popBackStack() }
                                     )

@@ -6,21 +6,25 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
-import ru.bel.servicecenter.controllers.UserController
+import ru.bel.servicecenter.controllers.UserManagementViewModel
 import ru.bel.servicecenter.models.User
 
+/**
+ * Экран со списком всех пользователей.
+ * Доступен только администратору.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UsersListScreen(
-    userController: UserController = viewModel(),
+    viewModel: UserManagementViewModel,
     onEditUser: (User) -> Unit,
     onBack: () -> Unit
 ) {
-    val users by userController.users.collectAsState()
-    val message by userController.message.collectAsState()
+    val users by viewModel.userController.users.collectAsState()
+    val message by viewModel.userController.message.collectAsState()
     var showMessage by remember { mutableStateOf(false) }
 
+    // Показываем диалог при появлении сообщения
     LaunchedEffect(message) {
         if (message != null) showMessage = true
     }
@@ -36,8 +40,9 @@ fun UsersListScreen(
         },
         floatingActionButton = {
             FloatingActionButton(onClick = {
-                // Переход к созданию нового пользователя
-                userController.setEditingUser(
+                // Очищаем сообщение и создаём пустого пользователя для добавления
+                viewModel.userController.clearMessage()
+                viewModel.userController.setEditingUser(
                     User(
                         user_name = "",
                         user_email = "",
@@ -46,7 +51,7 @@ fun UsersListScreen(
                         role_id = ""
                     )
                 )
-                onEditUser(userController.currentUser.value)
+                onEditUser(viewModel.userController.currentUser.value)
             }) {
                 Text("+")
             }
@@ -63,8 +68,15 @@ fun UsersListScreen(
                         Text(user.user_name, style = MaterialTheme.typography.titleMedium)
                         Text(user.user_email)
                         Row {
-                            TextButton(onClick = { onEditUser(user) }) { Text("Изменить") }
-                            TextButton(onClick = { userController.deleteUser(user) }) { Text("Удалить") }
+                            TextButton(onClick = {
+                                // Очищаем сообщение и готовим выбранного пользователя к редактированию
+                                viewModel.userController.clearMessage()
+                                viewModel.userController.setEditingUser(user)
+                                onEditUser(user)
+                            }) { Text("Изменить") }
+                            TextButton(onClick = { viewModel.userController.deleteUser(user) }) {
+                                Text("Удалить")
+                            }
                         }
                     }
                 }
@@ -72,12 +84,18 @@ fun UsersListScreen(
         }
     }
 
+    // Диалог с сообщением (успех/ошибка)
     if (showMessage) {
         AlertDialog(
             onDismissRequest = { showMessage = false },
             title = { Text("Сообщение") },
             text = { Text(message ?: "") },
-            confirmButton = { TextButton(onClick = { showMessage = false }) { Text("OK") } }
+            confirmButton = {
+                TextButton(onClick = {
+                    showMessage = false
+                    viewModel.userController.clearMessage() // очищаем сообщение
+                }) { Text("OK") }
+            }
         )
     }
 }

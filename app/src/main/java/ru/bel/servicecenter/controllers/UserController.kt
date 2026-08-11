@@ -6,6 +6,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import org.mindrot.jbcrypt.BCrypt
 import ru.bel.servicecenter.models.User
+import ru.bel.servicecenter.models.Role
+import ru.bel.servicecenter.models.Client
 import ru.bel.servicecenter.repository.RepositoryProvider
 import ru.bel.servicecenter.rules.ValidationRules
 import timber.log.Timber
@@ -32,6 +34,42 @@ class UserController : ViewModel() {
         loadUsers()
     }
 
+    // Списки для выпадающих полей
+    private val _roles = MutableStateFlow<List<Role>>(emptyList())
+    val roles: StateFlow<List<Role>> = _roles
+
+    private val _clients = MutableStateFlow<List<Client>>(emptyList())
+    val clients: StateFlow<List<Client>> = _clients
+
+    init {
+        loadUsers()
+        loadRoles()
+        loadClients()
+    }
+
+    fun loadRoles() {
+        viewModelScope.launch {
+            try {
+                val adminRole = RepositoryProvider.roleRepo.getRoleByName("admin")
+                val engRole = RepositoryProvider.roleRepo.getRoleByName("engineer")
+                val userRole = RepositoryProvider.roleRepo.getRoleByName("user")
+                _roles.value = listOfNotNull(adminRole, engRole, userRole)
+            } catch (e: Exception) {
+                Timber.e(e, "Ошибка загрузки ролей")
+            }
+        }
+    }
+
+    fun loadClients() {
+        viewModelScope.launch {
+            try {
+                _clients.value = RepositoryProvider.clientRepo.getAllClients()
+            } catch (e: Exception) {
+                Timber.e(e, "Ошибка загрузки клиентов")
+            }
+        }
+    }
+
     fun loadUsers() {
         viewModelScope.launch {
             try {
@@ -50,10 +88,16 @@ class UserController : ViewModel() {
         viewModelScope.launch {
             // Проверка прав
             if (!isNew) {
-                if (authUser == null) { _message.value = "Не выполнен вход"; return@launch }
-                if (!canEditUser(authUser, user)) { _message.value = "Недостаточно прав для редактирования"; return@launch }
+                if (authUser == null) {
+                    _message.value = "Не выполнен вход"; return@launch
+                }
+                if (!canEditUser(authUser, user)) {
+                    _message.value = "Недостаточно прав для редактирования"; return@launch
+                }
             } else {
-                if (!canCreateUser(authUser)) { _message.value = "Недостаточно прав для создания"; return@launch }
+                if (!canCreateUser(authUser)) {
+                    _message.value = "Недостаточно прав для создания"; return@launch
+                }
             }
 
             // Валидация
@@ -61,36 +105,52 @@ class UserController : ViewModel() {
             errs["user_name"] = ValidationRules.validateRequired(user.user_name, "Имя")
             errs["user_email"] = ValidationRules.validateEmail(user.user_email)
             errs["user_phone"] = ValidationRules.validatePhone(user.user_phone)
-            if (isNew) errs["user_password"] = ValidationRules.validatePassword(user.user_password)
-            else if (user.user_password.isNotEmpty()) errs["user_password"] = ValidationRules.validatePassword(user.user_password)
+            if (isNew) {
+                errs["user_password"] = ValidationRules.validatePassword(user.user_password)
+            } else {
+                // Если пароль не менялся (оставлен "***" или пустой), не ругаемся
+                if (user.user_password != "***" && user.user_password.isNotEmpty()) {
+                    errs["user_password"] = ValidationRules.validatePassword(user.user_password)
+                }
+            }
             if (user.role_id.isBlank()) errs["role_id"] = "Роль не выбрана"
             _errors.value = errs
             if (errs.any { it.value != null }) return@launch
 
-            try {
-                // Проверка уникальности email
-                val existing = RepositoryProvider.userRepo.getUserByEmail(user.user_email)
-                if (existing != null && existing.id != user.id) {
-                    _errors.value = _errors.value.toMutableMap().apply { put("user_email", "Email уже используется") }
-                    return@launch
-                }
+            viewModelScope.launch {
+                try {
+                    // Проверка уникальности email
+                    val existing = RepositoryProvider.userRepo.getUserByEmail(user.user_email)
+                    if (existing != null && existing.id != user.id) {
+                        _errors.value =
+                            _errors.value.toMutableMap().apply { put("user_email", "Email уже используется") }
+                        return@launch
+                    }
 
-                var updatedUser = user
-                if (user.user_password.isNotEmpty()) {
-                    val hashed = BCrypt.hashpw(user.user_password, BCrypt.gensalt())
-                    updatedUser = user.copy(user_password = hashed)
-                }
+                    var updatedUser = user
+                    // Хешируем пароль только если он реально изменился (не "***" и не пустой)
+                    if (user.user_password != "***" && user.user_password.isNotEmpty()) {
+                        val hashed = BCrypt.hashpw(user.user_password, BCrypt.gensalt())
+                        updatedUser = user.copy(user_password = hashed)
+                    } else if (!isNew) {
+                        // Оставляем старый пароль – копируем из исходного пользователя
+                        val original = _users.value.find { it.id == user.id }
+                        if (original != null) {
+                            updatedUser = user.copy(user_password = original.user_password)
+                        }
+                    }
 
-                if (isNew) {
-                    RepositoryProvider.userRepo.createUser(updatedUser)
-                    _message.value = "Пользователь создан"
-                } else {
-                    RepositoryProvider.userRepo.updateUser(updatedUser)
-                    _message.value = "Профиль обновлён"
+                    if (isNew) {
+                        RepositoryProvider.userRepo.createUser(updatedUser)
+                        _message.value = "Пользователь создан"
+                    } else {
+                        RepositoryProvider.userRepo.updateUser(updatedUser)
+                        _message.value = "Профиль обновлён"
+                    }
+                    loadUsers()
+                } catch (e: Exception) {
+                    _message.value = "Ошибка сохранения: ${e.message}"
                 }
-                loadUsers()
-            } catch (e: Exception) {
-                _message.value = "Ошибка сохранения: ${e.message}"
             }
         }
     }
@@ -111,7 +171,7 @@ class UserController : ViewModel() {
     }
 
     fun setEditingUser(user: User) {
-        _currentUser.value = user.copy(user_password = "")
+        _currentUser.value = user.copy(user_password = "***")   // заглушка, чтобы не показывать хеш
         _errors.value = emptyMap()
     }
 
@@ -126,6 +186,10 @@ class UserController : ViewModel() {
             "client_id" -> c.copy(client_id = value)
             else -> c
         }
+    }
+
+    fun clearMessage() {
+        _message.value = null
     }
 
     private suspend fun canEditUser(auth: User, target: User): Boolean {

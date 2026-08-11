@@ -10,11 +10,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import ru.bel.servicecenter.controllers.AuthController
 import ru.bel.servicecenter.rules.ValidationRules
 
-/**
- * Экран входа в систему.
- * Использует AuthController для проверки учётных данных.
- * Навигация после успешного входа управляется MainActivity.
- */
 @Composable
 fun LoginScreen(
     authController: AuthController = viewModel()
@@ -28,6 +23,16 @@ fun LoginScreen(
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
 
+    // Флаг блокировки на время входа
+    var isLoggingIn by remember { mutableStateOf(false) }
+
+    // При ошибке снимаем блокировку
+    LaunchedEffect(authError) {
+        if (authError != null) {
+            isLoggingIn = false
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -36,27 +41,23 @@ fun LoginScreen(
     ) {
         OutlinedTextField(
             value = email,
-            onValueChange = {
-                email = it
-                emailError = ValidationRules.validateEmail(it)
-            },
+            onValueChange = { email = it; emailError = ValidationRules.validateEmail(it) },
             label = { Text("Email") },
             isError = emailError != null,
             supportingText = { emailError?.let { Text(it) } },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !isLoggingIn
         )
         Spacer(modifier = Modifier.height(8.dp))
 
         OutlinedTextField(
             value = password,
-            onValueChange = {
-                password = it
-                passwordError = ValidationRules.validatePassword(it)
-            },
+            onValueChange = { password = it; passwordError = ValidationRules.validatePassword(it) },
             label = { Text("Пароль") },
             isError = passwordError != null,
             supportingText = { passwordError?.let { Text(it) } },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !isLoggingIn
         )
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -65,20 +66,31 @@ fun LoginScreen(
             Spacer(modifier = Modifier.height(8.dp))
         }
 
-        Button(
-            onClick = {
-                emailError = ValidationRules.validateEmail(email)
-                passwordError = ValidationRules.validatePassword(password)
-                if (emailError == null && passwordError == null) {
-                    // Убираем фокус с полей ввода и скрываем клавиатуру
-                    focusManager.clearFocus()
-                    keyboardController?.hide()
-                    authController.login(email, password)
-                }
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Войти")
+        if (isLoggingIn) {
+            Row(
+                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Выполняется вход...")
+            }
+        } else {
+            Button(
+                onClick = {
+                    emailError = ValidationRules.validateEmail(email)
+                    passwordError = ValidationRules.validatePassword(password)
+                    if (emailError == null && passwordError == null) {
+                        focusManager.clearFocus()
+                        keyboardController?.hide()
+                        isLoggingIn = true
+                        authController.login(email, password)
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Войти")
+            }
         }
     }
 }

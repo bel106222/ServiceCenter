@@ -8,11 +8,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import ru.bel.servicecenter.controllers.AuthController
 import ru.bel.servicecenter.rules.ValidationRules
 
-/**
- * Экран регистрации нового пользователя.
- * После успешной регистрации AuthController автоматически выполняет вход,
- * дальнейшая навигация управляется MainActivity.
- */
 @Composable
 fun RegisterScreen(
     authController: AuthController = viewModel()
@@ -29,12 +24,25 @@ fun RegisterScreen(
 
     val authError by authController.error.collectAsState()
 
+    // Флаг блокировки формы на время регистрации
+    var isRegistering by remember { mutableStateOf(false) }
+
+    // При появлении ошибки разблокируем форму, чтобы пользователь мог исправить данные
+    LaunchedEffect(authError) {
+        if (authError != null) {
+            isRegistering = false
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp),
         verticalArrangement = Arrangement.Center
     ) {
+        Text("Регистрация", style = MaterialTheme.typography.headlineSmall)
+        Spacer(modifier = Modifier.height(16.dp))
+
         // Имя
         OutlinedTextField(
             value = name,
@@ -42,7 +50,8 @@ fun RegisterScreen(
             label = { Text("Имя") },
             isError = nameError != null,
             supportingText = { nameError?.let { Text(it) } },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !isRegistering
         )
         Spacer(modifier = Modifier.height(8.dp))
 
@@ -53,7 +62,8 @@ fun RegisterScreen(
             label = { Text("Email") },
             isError = emailError != null,
             supportingText = { emailError?.let { Text(it) } },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !isRegistering
         )
         Spacer(modifier = Modifier.height(8.dp))
 
@@ -64,7 +74,8 @@ fun RegisterScreen(
             label = { Text("Телефон (+7XXXXXXXXXX)") },
             isError = phoneError != null,
             supportingText = { phoneError?.let { Text(it) } },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !isRegistering
         )
         Spacer(modifier = Modifier.height(8.dp))
 
@@ -75,7 +86,8 @@ fun RegisterScreen(
             label = { Text("Пароль") },
             isError = passwordError != null,
             supportingText = { passwordError?.let { Text(it) } },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !isRegistering
         )
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -85,19 +97,32 @@ fun RegisterScreen(
             Spacer(modifier = Modifier.height(8.dp))
         }
 
-        Button(
-            onClick = {
-                nameError = ValidationRules.validateRequired(name, "Имя")
-                emailError = ValidationRules.validateEmail(email)
-                phoneError = ValidationRules.validatePhone(phone)
-                passwordError = ValidationRules.validatePassword(password)
-                if (listOf(nameError, emailError, phoneError, passwordError).all { it == null }) {
-                    authController.register(name, email, phone, password)
-                }
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Зарегистрироваться")
+        // Кнопка или индикатор выполнения
+        if (isRegistering) {
+            Row(
+                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Создание пользователя...")
+            }
+        } else {
+            Button(
+                onClick = {
+                    nameError = ValidationRules.validateRequired(name, "Имя")
+                    emailError = ValidationRules.validateEmail(email)
+                    phoneError = ValidationRules.validatePhone(phone)
+                    passwordError = ValidationRules.validatePassword(password)
+                    if (listOf(nameError, emailError, phoneError, passwordError).all { it == null }) {
+                        isRegistering = true
+                        authController.register(name, email, phone, password)
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Зарегистрироваться")
+            }
         }
     }
 }

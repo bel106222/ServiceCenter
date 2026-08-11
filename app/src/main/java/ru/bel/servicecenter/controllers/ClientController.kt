@@ -131,6 +131,10 @@ class ClientController : ViewModel() {
         }
     }
 
+    fun clearMessage() {
+        _message.value = null
+    }
+
     private suspend fun isAdminOrEngineer(user: User): Boolean {
         val admin = RepositoryProvider.roleRepo.getRoleByName("admin")
         val eng = RepositoryProvider.roleRepo.getRoleByName("engineer")
