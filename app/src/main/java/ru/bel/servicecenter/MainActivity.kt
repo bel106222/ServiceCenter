@@ -138,7 +138,8 @@ class MainActivity : ComponentActivity() {
                             val adminController = remember { AdminController() }
                             val userController = remember { UserController() }
                             val userManagementViewModel = remember { UserManagementViewModel() }
-                            val clientManagementViewModel = remember { ClientManagementViewModel() }
+                            val clientController = remember { ClientController() }
+                            val categoryController = remember { CategoryController() }
                             val loggedUser by authController.loggedUser.collectAsState()
 
                             LaunchedEffect(loggedUser) {
@@ -300,12 +301,12 @@ class MainActivity : ComponentActivity() {
                                 composable("clients") {
                                     val currentUser by authController.loggedUser.collectAsState()
                                     LaunchedEffect(currentUser) {
-                                        clientManagementViewModel.clientController.currentAuthUser = currentUser
+                                        clientController.currentAuthUser = currentUser
                                     }
                                     ClientsListScreen(
-                                        viewModel = clientManagementViewModel,
+                                        clientController = clientController,
                                         onEditClient = { client ->
-                                            clientManagementViewModel.clientController.setEditingClient(client)
+                                            clientController.setEditingClient(client)
                                             navController.navigate("client_edit")
                                         },
                                         onBack = { navController.popBackStack() }
@@ -315,10 +316,10 @@ class MainActivity : ComponentActivity() {
                                 composable("client_edit") {
                                     val currentUser by authController.loggedUser.collectAsState()
                                     LaunchedEffect(currentUser) {
-                                        clientManagementViewModel.clientController.currentAuthUser = currentUser
+                                        clientController.currentAuthUser = currentUser
                                     }
                                     ClientEditScreen(
-                                        viewModel = clientManagementViewModel,
+                                        clientController = clientController,
                                         onSaved = { navController.popBackStack() },
                                         onCancel = { navController.popBackStack() }
                                     )
@@ -326,11 +327,13 @@ class MainActivity : ComponentActivity() {
 
                                 composable("categories") {
                                     val currentUser by authController.loggedUser.collectAsState()
-                                    val catController = remember { CategoryController().apply { currentAuthUser = currentUser } }
+                                    LaunchedEffect(currentUser) {
+                                        categoryController.currentAuthUser = currentUser
+                                    }
                                     CategoriesListScreen(
-                                        categoryController = catController,
+                                        categoryController = categoryController,
                                         onEditCategory = { cat ->
-                                            catController.setEditingCategory(cat)
+                                            categoryController.setEditingCategory(cat)
                                             navController.navigate("category_edit")
                                         },
                                         onBack = { navController.popBackStack() }
@@ -339,9 +342,11 @@ class MainActivity : ComponentActivity() {
 
                                 composable("category_edit") {
                                     val currentUser by authController.loggedUser.collectAsState()
-                                    val catController = remember { CategoryController().apply { currentAuthUser = currentUser } }
+                                    LaunchedEffect(currentUser) {
+                                        categoryController.currentAuthUser = currentUser
+                                    }
                                     CategoryEditScreen(
-                                        categoryController = catController,
+                                        categoryController = categoryController,
                                         onSaved = { navController.popBackStack() },
                                         onCancel = { navController.popBackStack() }
                                     )

@@ -97,6 +97,10 @@ class CategoryController : ViewModel() {
         _currentCategory.value = _currentCategory.value.copy(category_name = value)
     }
 
+    fun clearMessage() {
+        _message.value = null
+    }
+
     private suspend fun canModify(user: User): Boolean {
         val admin = RepositoryProvider.roleRepo.getRoleByName("admin")
         val eng = RepositoryProvider.roleRepo.getRoleByName("engineer")

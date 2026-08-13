@@ -2,13 +2,14 @@ package ru.bel.servicecenter.ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import ru.bel.servicecenter.controllers.AuthController
-import ru.bel.servicecenter.rules.ValidationRules
 
 @Composable
 fun LoginScreen(
@@ -16,17 +17,15 @@ fun LoginScreen(
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    var emailError by remember { mutableStateOf<String?>(null) }
-    var passwordError by remember { mutableStateOf<String?>(null) }
 
     val authError by authController.error.collectAsState()
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
 
-    // Флаг блокировки на время входа
+    // Флаг блокировки формы на время входа
     var isLoggingIn by remember { mutableStateOf(false) }
 
-    // При ошибке снимаем блокировку
+    // При возникновении ошибки снимаем блокировку
     LaunchedEffect(authError) {
         if (authError != null) {
             isLoggingIn = false
@@ -41,10 +40,8 @@ fun LoginScreen(
     ) {
         OutlinedTextField(
             value = email,
-            onValueChange = { email = it; emailError = ValidationRules.validateEmail(it) },
+            onValueChange = { email = it },
             label = { Text("Email") },
-            isError = emailError != null,
-            supportingText = { emailError?.let { Text(it) } },
             modifier = Modifier.fillMaxWidth(),
             enabled = !isLoggingIn
         )
@@ -52,10 +49,9 @@ fun LoginScreen(
 
         OutlinedTextField(
             value = password,
-            onValueChange = { password = it; passwordError = ValidationRules.validatePassword(it) },
+            onValueChange = { password = it },
             label = { Text("Пароль") },
-            isError = passwordError != null,
-            supportingText = { passwordError?.let { Text(it) } },
+            visualTransformation = PasswordVisualTransformation(),
             modifier = Modifier.fillMaxWidth(),
             enabled = !isLoggingIn
         )
@@ -73,19 +69,15 @@ fun LoginScreen(
             ) {
                 CircularProgressIndicator(modifier = Modifier.size(24.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Выполняется вход...")
+                Text("Вход...")
             }
         } else {
             Button(
                 onClick = {
-                    emailError = ValidationRules.validateEmail(email)
-                    passwordError = ValidationRules.validatePassword(password)
-                    if (emailError == null && passwordError == null) {
-                        focusManager.clearFocus()
-                        keyboardController?.hide()
-                        isLoggingIn = true
-                        authController.login(email, password)
-                    }
+                    focusManager.clearFocus()
+                    keyboardController?.hide()
+                    isLoggingIn = true
+                    authController.login(email, password)
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {

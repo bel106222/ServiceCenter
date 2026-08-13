@@ -5,16 +5,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import ru.bel.servicecenter.controllers.ClientManagementViewModel
+import ru.bel.servicecenter.controllers.ClientController
 import ru.bel.servicecenter.rules.ValidationRules
 
 @Composable
 fun ClientEditScreen(
-    viewModel: ClientManagementViewModel,
+    clientController: ClientController,
     onSaved: () -> Unit,
     onCancel: () -> Unit
 ) {
-    val clientController = viewModel.clientController
+    val clientController = clientController
     val currentClient by clientController.currentClient.collectAsState()
     val errors by clientController.errors.collectAsState()
     val message by clientController.message.collectAsState()

@@ -3,6 +3,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import ru.bel.servicecenter.controllers.AuthController
@@ -24,10 +25,9 @@ fun RegisterScreen(
 
     val authError by authController.error.collectAsState()
 
-    // Флаг блокировки формы на время регистрации
     var isRegistering by remember { mutableStateOf(false) }
 
-    // При появлении ошибки разблокируем форму, чтобы пользователь мог исправить данные
+    // При появлении ошибки разблокируем форму
     LaunchedEffect(authError) {
         if (authError != null) {
             isRegistering = false
@@ -79,11 +79,12 @@ fun RegisterScreen(
         )
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Пароль
+        // Пароль (маскированный)
         OutlinedTextField(
             value = password,
             onValueChange = { password = it; passwordError = ValidationRules.validatePassword(it) },
             label = { Text("Пароль") },
+            visualTransformation = PasswordVisualTransformation(),
             isError = passwordError != null,
             supportingText = { passwordError?.let { Text(it) } },
             modifier = Modifier.fillMaxWidth(),
@@ -91,13 +92,11 @@ fun RegisterScreen(
         )
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Ошибка регистрации
         authError?.let {
             Text(it, color = MaterialTheme.colorScheme.error)
             Spacer(modifier = Modifier.height(8.dp))
         }
 
-        // Кнопка или индикатор выполнения
         if (isRegistering) {
             Row(
                 horizontalArrangement = Arrangement.Center,
