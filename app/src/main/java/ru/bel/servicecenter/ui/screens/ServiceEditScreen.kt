@@ -2,78 +2,123 @@ package ru.bel.servicecenter.ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import ru.bel.servicecenter.controllers.ServiceController
+import ru.bel.servicecenter.rules.ValidationRules
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ServiceEditScreen(
-    serviceController: ServiceController = viewModel(),
+    serviceController: ServiceController,
     onSaved: () -> Unit,
     onCancel: () -> Unit
 ) {
-    val current by serviceController.currentService.collectAsState()
+    val currentService by serviceController.currentService.collectAsState()
     val errors by serviceController.errors.collectAsState()
     val message by serviceController.message.collectAsState()
+    val categories by serviceController.categories.collectAsState()
 
-    // Получаем список категорий для выбора (можно через отдельный контроллер или загружать здесь)
-    // Упростим: в ServiceController можно добавить список категорий, но для краткости используем TextField.
+    var isSaving by remember { mutableStateOf(false) }
+    var selectedCategoryName by remember { mutableStateOf("") }
+    var categoryDropdownExpanded by remember { mutableStateOf(false) }
+
+    LaunchedEffect(currentService, categories) {
+        selectedCategoryName = categories.find { it.id == currentService?.category_id }?.category_name ?: "Не выбрана"
+    }
+
+    LaunchedEffect(message) {
+        if (message != null) {
+            isSaving = false
+            if (message == "Услуга создана" || message == "Услуга обновлена") {
+                onSaved()
+            }
+        }
+    }
+
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("Редактирование услуги", style = MaterialTheme.typography.headlineSmall)
         Spacer(modifier = Modifier.height(16.dp))
 
         OutlinedTextField(
-            value = current.service_name,
+            value = currentService?.service_name ?: "",
             onValueChange = { serviceController.updateField("name", it) },
             label = { Text("Название") },
             isError = errors["service_name"] != null,
             supportingText = { errors["service_name"]?.let { Text(it) } },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !isSaving
         )
         Spacer(modifier = Modifier.height(8.dp))
 
         OutlinedTextField(
-            value = current.service_description,
+            value = currentService?.service_description ?: "",
             onValueChange = { serviceController.updateField("description", it) },
             label = { Text("Описание") },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !isSaving
         )
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Категория – упрощённо: ввод UUID, но можно выпадающий список.
-        OutlinedTextField(
-            value = current.category_id,
-            onValueChange = { serviceController.updateField("category_id", it) },
-            label = { Text("ID категории") },
-            isError = errors["category_id"] != null,
-            supportingText = { errors["category_id"]?.let { Text(it) } },
-            modifier = Modifier.fillMaxWidth()
-        )
+        // Выпадающий список категорий
+        ExposedDropdownMenuBox(
+            expanded = categoryDropdownExpanded,
+            onExpandedChange = { categoryDropdownExpanded = it }
+        ) {
+            OutlinedTextField(
+                value = selectedCategoryName,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Категория") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = categoryDropdownExpanded) },
+                isError = errors["category_id"] != null,
+                modifier = Modifier.fillMaxWidth().menuAnchor(),
+                enabled = !isSaving
+            )
+            ExposedDropdownMenu(
+                expanded = categoryDropdownExpanded,
+                onDismissRequest = { categoryDropdownExpanded = false }
+            ) {
+                categories.forEach { category ->
+                    DropdownMenuItem(
+                        text = { Text(category.category_name) },
+                        onClick = {
+                            selectedCategoryName = category.category_name
+                            serviceController.updateField("category_id", category.id)
+                            categoryDropdownExpanded = false
+                        }
+                    )
+                }
+            }
+        }
         Spacer(modifier = Modifier.height(8.dp))
 
-        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(
-                checked = current.is_fixprice,
-                onCheckedChange = { serviceController.updateField("is_fixprice", it.toString()) }
+                checked = currentService?.is_fixprice ?: false,
+                onCheckedChange = { serviceController.updateField("is_fixprice", it.toString()) },
+                enabled = !isSaving
             )
             Text("Фиксированная цена")
         }
 
         Spacer(modifier = Modifier.height(24.dp))
         Row(horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth()) {
-            Button(onClick = { serviceController.saveService() }) { Text("Сохранить") }
-            Button(onClick = onCancel, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)) { Text("Отмена") }
-        }
-
-        message?.let {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(it)
-        }
-
-        LaunchedEffect(message) {
-            if (message == "Услуга создана" || message == "Услуга обновлена") {
-                onSaved()
+            if (isSaving) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Сохранение...")
+                }
+            } else {
+                Button(onClick = {
+                    isSaving = true
+                    serviceController.saveService()
+                }) { Text("Сохранить") }
+                Button(onClick = onCancel,
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                ) { Text("Отмена") }
             }
         }
     }

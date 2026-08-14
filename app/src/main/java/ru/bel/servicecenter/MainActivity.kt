@@ -140,6 +140,9 @@ class MainActivity : ComponentActivity() {
                             val userManagementViewModel = remember { UserManagementViewModel() }
                             val clientController = remember { ClientController() }
                             val categoryController = remember { CategoryController() }
+                            val priceController = remember { PriceController() }
+                            val serviceController = remember { ServiceController() }
+
                             val loggedUser by authController.loggedUser.collectAsState()
 
                             LaunchedEffect(loggedUser) {
@@ -353,49 +356,115 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 composable("services") {
-                                    val currentUser by authController.loggedUser.collectAsState()
-                                    val serviceController = remember { ServiceController().apply { currentAuthUser = currentUser } }
-                                    ServicesListScreen(
+                                    LaunchedEffect(Unit) {
+                                        serviceController.loadCategories()
+                                    }
+                                    ServiceCategoriesScreen(
                                         serviceController = serviceController,
-                                        onEditService = { srv ->
-                                            serviceController.setEditingService(srv)
-                                            navController.navigate("service_edit")
+                                        onSelectCategory = { category ->
+                                            navController.navigate("services_by_category/${category.id}")
                                         },
                                         onBack = { navController.popBackStack() }
                                     )
                                 }
 
-                                composable("service_edit") {
-                                    val currentUser by authController.loggedUser.collectAsState()
-                                    val serviceController = remember { ServiceController().apply { currentAuthUser = currentUser } }
-                                    ServiceEditScreen(
-                                        serviceController = serviceController,
-                                        onSaved = { navController.popBackStack() },
-                                        onCancel = { navController.popBackStack() }
-                                    )
+                                composable("services_by_category/{categoryId}") { backStackEntry ->
+                                    val categoryId = backStackEntry.arguments?.getString("categoryId") ?: ""
+                                    val categories by serviceController.categories.collectAsState()
+                                    val category = categories.find { it.id == categoryId }
+                                    if (category != null) {
+                                        ServicesListScreen(
+                                            serviceController = serviceController,
+                                            category = category,
+                                            onEditService = { service ->
+                                                serviceController.startEditing(service)
+                                                navController.navigate("service_edit/${service.id}")
+                                            },
+                                            onBack = { navController.popBackStack() }
+                                        )
+                                    } else {
+                                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                            CircularProgressIndicator()
+                                        }
+                                    }
+                                }
+
+                                composable("service_edit/{serviceId}") { backStackEntry ->
+                                    val serviceId = backStackEntry.arguments?.getString("serviceId") ?: ""
+                                    val services by serviceController.services.collectAsState()
+                                    val service = services.find { it.id == serviceId }
+                                    if (service != null) {
+                                        serviceController.startEditing(service)
+                                        ServiceEditScreen(
+                                            serviceController = serviceController,
+                                            onSaved = { navController.popBackStack() },
+                                            onCancel = { navController.popBackStack() }
+                                        )
+                                    } else {
+                                        // Если услуга новая, просто открываем редактор
+                                        serviceController.startEditing(null)
+                                        ServiceEditScreen(
+                                            serviceController = serviceController,
+                                            onSaved = { navController.popBackStack() },
+                                            onCancel = { navController.popBackStack() }
+                                        )
+                                    }
                                 }
 
                                 composable("prices") {
-                                    val currentUser by authController.loggedUser.collectAsState()
-                                    val priceController = remember { PriceController().apply { currentAuthUser = currentUser } }
-                                    PriceListScreen(
+                                    LaunchedEffect(Unit) {
+                                        priceController.loadCategories()
+                                    }
+                                    PriceCategoriesScreen(
                                         priceController = priceController,
-                                        onEditPrice = { price ->
-                                            priceController.setEditingPrice(price)
-                                            navController.navigate("price_edit")
+                                        onSelectCategory = { category ->
+                                            // Сохраняем выбранную категорию в контроллере? Можно передать id
+                                            navController.navigate("price_services/${category.id}")
                                         },
                                         onBack = { navController.popBackStack() }
                                     )
                                 }
 
-                                composable("price_edit") {
-                                    val currentUser by authController.loggedUser.collectAsState()
-                                    val priceController = remember { PriceController().apply { currentAuthUser = currentUser } }
-                                    PriceEditScreen(
-                                        priceController = priceController,
-                                        onSaved = { navController.popBackStack() },
-                                        onCancel = { navController.popBackStack() }
-                                    )
+                                composable("price_services/{categoryId}") { backStackEntry ->
+                                    val categoryId = backStackEntry.arguments?.getString("categoryId") ?: ""
+                                    // Находим категорию в списке
+                                    val categories by priceController.categories.collectAsState()
+                                    val category = categories.find { it.id == categoryId }
+                                    if (category != null) {
+                                        PriceServicesScreen(
+                                            priceController = priceController,
+                                            category = category,
+                                            onEditPrice = { service, price ->
+                                                priceController.startEditing(service, price)
+                                                navController.navigate("price_edit/${service.id}")
+                                            },
+                                            onBack = { navController.popBackStack() }
+                                        )
+                                    } else {
+                                        // Если категория не найдена, показать индикатор
+                                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                            CircularProgressIndicator()
+                                        }
+                                    }
+                                }
+
+                                composable("price_edit/{serviceId}") { backStackEntry ->
+                                    val serviceId = backStackEntry.arguments?.getString("serviceId") ?: ""
+                                    // Находим услугу в текущем списке услуг с ценами
+                                    val servicesWithPrices by priceController.serviceWithPrice.collectAsState()
+                                    val serviceWithPrice = servicesWithPrices.find { it.service.id == serviceId }
+                                    if (serviceWithPrice != null) {
+                                        PriceEditScreen(
+                                            priceController = priceController,
+                                            service = serviceWithPrice.service,
+                                            onSaved = { navController.popBackStack() },
+                                            onCancel = { navController.popBackStack() }
+                                        )
+                                    } else {
+                                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                            CircularProgressIndicator()
+                                        }
+                                    }
                                 }
 
                                 composable("orders") {

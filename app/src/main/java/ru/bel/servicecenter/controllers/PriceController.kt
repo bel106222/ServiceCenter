@@ -4,113 +4,128 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import ru.bel.servicecenter.models.Category
 import ru.bel.servicecenter.models.Price
+import ru.bel.servicecenter.models.Service
 import ru.bel.servicecenter.models.User
 import ru.bel.servicecenter.repository.RepositoryProvider
-import ru.bel.servicecenter.rules.ValidationRules
 import timber.log.Timber
 
+/**
+ * Контроллер для работы с ценами.
+ * Реализует логику выбора категории, загрузки услуг и актуальных цен.
+ */
 class PriceController : ViewModel() {
 
-    private val _prices = MutableStateFlow<List<Price>>(emptyList())
-    val prices: StateFlow<List<Price>> = _prices
+    // Список категорий
+    private val _categories = MutableStateFlow<List<Category>>(emptyList())
+    val categories: StateFlow<List<Category>> = _categories
 
-    private val _currentPrice = MutableStateFlow(
-        Price(service_id = "", service_cost = 0f, is_time = false)
-    )
-    val currentPrice: StateFlow<Price> = _currentPrice
+    // Услуги с актуальной ценой для выбранной категории
+    private val _serviceWithPrice = MutableStateFlow<List<ServiceWithPrice>>(emptyList())
+    val serviceWithPrice: StateFlow<List<ServiceWithPrice>> = _serviceWithPrice
 
-    private val _errors = MutableStateFlow<Map<String, String?>>(emptyMap())
-    val errors: StateFlow<Map<String, String?>> = _errors
+    // Текущая редактируемая цена
+    private val _currentPrice = MutableStateFlow<Price?>(null)
+    val currentPrice: StateFlow<Price?> = _currentPrice
 
+    // Текущая услуга, для которой редактируется цена
+    private val _currentService = MutableStateFlow<Service?>(null)
+    val currentService: StateFlow<Service?> = _currentService
+
+    // Сообщение пользователю
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
 
     var currentAuthUser: User? = null
 
-    init {
-        loadPrices()
-    }
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = _isLoading
 
-    fun loadPrices() {
+    /**
+     * Загружает все категории.
+     */
+    fun loadCategories() {
         viewModelScope.launch {
             try {
-                _prices.value = RepositoryProvider.priceRepo.getAllPrices()
+                _categories.value = RepositoryProvider.categoryRepo.getAllCategories()
             } catch (e: Exception) {
-                _message.value = "Ошибка загрузки цен: ${e.message}"
+                _message.value = "Ошибка загрузки категорий: ${e.message}"
             }
         }
     }
 
-    fun savePrice() {
-        val price = _currentPrice.value
-        val authUser = currentAuthUser
-
+    /**
+     * Загружает услуги выбранной категории и их актуальные цены.
+     * Актуальная цена – запись с самой поздней датой создания.
+     */
+    fun loadServicesWithPrices(categoryId: String) {
         viewModelScope.launch {
-            if (authUser == null || !canModify(authUser)) {
-                _message.value = "Недостаточно прав"; return@launch
-            }
-
-            val errs = mutableMapOf<String, String?>()
-            errs["service_id"] = if (price.service_id.isBlank()) "Выберите услугу" else null
-            errs["service_cost"] = if (price.service_cost <= 0) "Стоимость должна быть положительной" else null
-            _errors.value = errs
-            if (errs.any { it.value != null }) return@launch
-
+            _isLoading.value = true
+            _serviceWithPrice.value = emptyList() // сразу очищаем предыдущий список
             try {
-                val existing = RepositoryProvider.priceRepo.getPriceByServiceId(price.service_id)
-                if (existing != null && existing.id != price.id) {
-                    _errors.value = mapOf("service_id" to "Цена для этой услуги уже задана")
-                    return@launch
+                val services = RepositoryProvider.serviceRepo.getServicesByCategoryId(categoryId)
+                val allPrices = RepositoryProvider.priceRepo.getAllPrices()
+
+                val result = services.map { service ->
+                    val pricesForService = allPrices.filter { it.service_id == service.id }
+                    val actualPrice = pricesForService.maxByOrNull { it.created_at }
+                    ServiceWithPrice(service, actualPrice)
                 }
-                if (price.id.isEmpty() || _prices.value.none { it.id == price.id }) {
-                    RepositoryProvider.priceRepo.createPrice(price)
-                    _message.value = "Цена создана"
-                } else {
-                    RepositoryProvider.priceRepo.updatePrice(price)
-                    _message.value = "Цена обновлена"
+                _serviceWithPrice.value = result
+            } catch (e: Exception) {
+                _message.value = "Ошибка загрузки цен: ${e.message}"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    /**
+     * Устанавливает услугу и текущую цену для редактирования.
+     */
+    fun startEditing(service: Service, price: Price?) {
+        _currentService.value = service
+        _currentPrice.value = price
+    }
+
+    /**
+     * Создаёт новую цену для услуги.
+     * После создания обновляет список актуальных цен.
+     */
+    fun createPrice(service: Service, cost: Float, isTime: Boolean) {
+        viewModelScope.launch {
+            try {
+                val newPrice = Price(
+                    service_id = service.id,
+                    service_cost = cost,
+                    is_time = isTime
+                )
+                RepositoryProvider.priceRepo.createPrice(newPrice)
+                _message.value = "Цена обновлена"
+                // Обновляем актуальные цены для выбранной категории
+                if (!service.category_id.isNullOrBlank()) {
+                    loadServicesWithPrices(service.category_id)
                 }
-                loadPrices()
             } catch (e: Exception) {
                 _message.value = "Ошибка сохранения цены: ${e.message}"
             }
         }
     }
 
-    fun deletePrice(price: Price) {
-        val authUser = currentAuthUser
-        viewModelScope.launch {
-            if (authUser == null || !canModify(authUser)) {
-                _message.value = "Недостаточно прав"; return@launch
-            }
-            try {
-                RepositoryProvider.priceRepo.deletePrice(price)
-                loadPrices()
-                _message.value = "Цена удалена"
-            } catch (e: Exception) {
-                _message.value = "Ошибка удаления: ${e.message}"
-            }
-        }
+    /**
+     * Очищает сообщение.
+     */
+    fun clearMessage() {
+        _message.value = null
     }
 
-    fun setEditingPrice(price: Price) {
-        _currentPrice.value = price
-        _errors.value = emptyMap()
-    }
+    /**
+     * Вспомогательный класс для хранения услуги и её актуальной цены.
+     */
+    data class ServiceWithPrice(
+        val service: Service,
+        val price: Price?   // может быть null, если цена ещё не задана
+    )
 
-    fun updateField(field: String, value: String) {
-        val p = _currentPrice.value
-        _currentPrice.value = when (field) {
-            "service_id" -> p.copy(service_id = value)
-            "cost" -> p.copy(service_cost = value.toFloatOrNull() ?: 0f)
-            "is_time" -> p.copy(is_time = value.toBoolean())
-            else -> p
-        }
-    }
-
-    private suspend fun canModify(user: User): Boolean {
-        val admin = RepositoryProvider.roleRepo.getRoleByName("admin")
-        val eng = RepositoryProvider.roleRepo.getRoleByName("engineer")
-        return user.role_id == admin?.id || user.role_id == eng?.id
-    }
 }

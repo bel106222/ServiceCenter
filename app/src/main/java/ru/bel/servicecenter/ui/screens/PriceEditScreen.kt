@@ -1,69 +1,101 @@
 package ru.bel.servicecenter.ui.screens
-
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import ru.bel.servicecenter.controllers.PriceController
+import ru.bel.servicecenter.models.Service
 
+/**
+ * Экран редактирования цены услуги.
+ * Показывает название услуги и поля для ввода новой цены.
+ * При сохранении создаётся новая запись цены.
+ */
 @Composable
 fun PriceEditScreen(
-    priceController: PriceController = viewModel(),
+    priceController: PriceController,
+    service: Service,
     onSaved: () -> Unit,
     onCancel: () -> Unit
 ) {
-    val current by priceController.currentPrice.collectAsState()
-    val errors by priceController.errors.collectAsState()
+    val currentPrice by priceController.currentPrice.collectAsState()
     val message by priceController.message.collectAsState()
+
+    var cost by remember { mutableStateOf(currentPrice?.service_cost?.toString() ?: "") }
+    var isTime by remember { mutableStateOf(currentPrice?.is_time ?: false) }
+    var isSaving by remember { mutableStateOf(false) }
+
+    LaunchedEffect(message) {
+        if (message != null) {
+            isSaving = false
+            if (message == "Цена обновлена") {
+                onSaved()
+            }
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("Редактирование цены", style = MaterialTheme.typography.headlineSmall)
         Spacer(modifier = Modifier.height(16.dp))
 
+        // Название услуги (нередактируемое)
         OutlinedTextField(
-            value = current.service_id,
-            onValueChange = { priceController.updateField("service_id", it) },
-            label = { Text("ID услуги") },
-            isError = errors["service_id"] != null,
-            supportingText = { errors["service_id"]?.let { Text(it) } },
-            modifier = Modifier.fillMaxWidth()
+            value = service.service_name,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Услуга") },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = false
         )
         Spacer(modifier = Modifier.height(8.dp))
 
+        // Поле стоимости
         OutlinedTextField(
-            value = current.service_cost.toString(),
-            onValueChange = { priceController.updateField("cost", it) },
+            value = cost,
+            onValueChange = { cost = it },
             label = { Text("Стоимость") },
-            isError = errors["service_cost"] != null,
-            supportingText = { errors["service_cost"]?.let { Text(it) } },
-            modifier = Modifier.fillMaxWidth()
+            isError = cost.toFloatOrNull() == null || (cost.toFloatOrNull() ?: 0f) <= 0,
+            supportingText = {
+                if (cost.toFloatOrNull() == null || (cost.toFloatOrNull() ?: 0f) <= 0) {
+                    Text("Введите положительное число")
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !isSaving
         )
         Spacer(modifier = Modifier.height(8.dp))
 
-        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(
-                checked = current.is_time,
-                onCheckedChange = { priceController.updateField("is_time", it.toString()) }
+                checked = isTime,
+                onCheckedChange = { isTime = it },
+                enabled = !isSaving
             )
             Text("Почасовая оплата")
         }
 
         Spacer(modifier = Modifier.height(24.dp))
         Row(horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth()) {
-            Button(onClick = { priceController.savePrice() }) { Text("Сохранить") }
-            Button(onClick = onCancel, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)) { Text("Отмена") }
-        }
-
-        message?.let {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(it)
-        }
-
-        LaunchedEffect(message) {
-            if (message == "Цена создана" || message == "Цена обновлена") {
-                onSaved()
+            if (isSaving) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Сохранение...")
+                }
+            } else {
+                Button(onClick = {
+                    val costValue = cost.toFloatOrNull()
+                    if (costValue != null && costValue > 0) {
+                        isSaving = true
+                        priceController.createPrice(service, costValue, isTime)
+                    }
+                }) { Text("Сохранить") }
+                Button(
+                    onClick = onCancel,
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                ) { Text("Отмена") }
             }
         }
     }
