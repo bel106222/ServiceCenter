@@ -1,5 +1,4 @@
 package ru.bel.servicecenter.ui.screens
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -7,22 +6,20 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
-import ru.bel.servicecenter.controllers.OrderController
 import ru.bel.servicecenter.models.Order
 
+/**
+ * Экран списка заказов.
+ * Получает уже загруженный список и отображает его без дополнительных запросов.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OrdersListScreen(
-    orderController: OrderController = viewModel(),
+    orders: List<Order>,
     onEditOrder: (Order) -> Unit,
+    onAddNewOrder: () -> Unit,
     onBack: () -> Unit
 ) {
-    val orders by orderController.orders.collectAsState()
-    val message by orderController.message.collectAsState()
-    var showMessage by remember { mutableStateOf(false) }
-    LaunchedEffect(message) { if (message != null) showMessage = true }
-
     Scaffold(
         topBar = {
             TopAppBar(
@@ -31,35 +28,29 @@ fun OrdersListScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = {
-                orderController.setEditingOrder(Order(order_number = "", order_description = "", user_id = ""))
-                onEditOrder(orderController.currentOrder.value)
-            }) { Text("+") }
+            FloatingActionButton(onClick = onAddNewOrder) { Text("+") }
         }
     ) { padding ->
         LazyColumn(modifier = Modifier.padding(padding)) {
             items(orders) { order ->
-                Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text("Заказ № ${order.order_number}")
                         Text("Описание: ${order.order_description}")
                         Text("Сумма: ${order.order_sum}")
                         Row {
                             TextButton(onClick = { onEditOrder(order) }) { Text("Изменить") }
-                            TextButton(onClick = { orderController.deleteOrder(order) }) { Text("Удалить") }
+                            // Кнопка удаления может быть добавлена позже, если требуется.
+                            // Для неё потребуется доступ к OrderController в этом экране,
+                            // но текущая задача не подразумевает удаление.
                         }
                     }
                 }
             }
         }
-    }
-
-    if (showMessage) {
-        AlertDialog(
-            onDismissRequest = { showMessage = false },
-            title = { Text("Сообщение") },
-            text = { Text(message ?: "") },
-            confirmButton = { TextButton(onClick = { showMessage = false }) { Text("OK") } }
-        )
     }
 }

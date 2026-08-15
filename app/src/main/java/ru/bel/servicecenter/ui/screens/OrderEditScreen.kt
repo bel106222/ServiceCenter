@@ -2,88 +2,108 @@ package ru.bel.servicecenter.ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import ru.bel.servicecenter.controllers.OrderController
+import ru.bel.servicecenter.rules.ValidationRules
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OrderEditScreen(
-    orderController: OrderController = viewModel(),
+    orderController: OrderController,
     onSaved: () -> Unit,
     onCancel: () -> Unit
 ) {
-    val current by orderController.currentOrder.collectAsState()
+    val currentOrder by orderController.currentOrder.collectAsState()
     val errors by orderController.errors.collectAsState()
     val message by orderController.message.collectAsState()
+    val authorName by orderController.authorName.collectAsState()
+    val isAdminOrEngineer = orderController.isAdminOrEngineer
+
+    var isSaving by remember { mutableStateOf(false) }
+
+    LaunchedEffect(message) {
+        if (message != null) {
+            isSaving = false
+            if (message == "Заказ создан" || message == "Заказ обновлён") {
+                onSaved()
+            }
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("Редактирование заказа", style = MaterialTheme.typography.headlineSmall)
         Spacer(modifier = Modifier.height(16.dp))
 
         OutlinedTextField(
-            value = current.order_number,
-            onValueChange = { orderController.updateField("number", it) },
+            value = currentOrder?.order_number ?: "",
+            onValueChange = {},
+            readOnly = true,
             label = { Text("Номер заказа") },
-            isError = errors["order_number"] != null,
-            supportingText = { errors["order_number"]?.let { Text(it) } },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            enabled = false
         )
         Spacer(modifier = Modifier.height(8.dp))
 
         OutlinedTextField(
-            value = current.order_description,
+            value = currentOrder?.order_description ?: "",
             onValueChange = { orderController.updateField("description", it) },
             label = { Text("Описание") },
             isError = errors["order_description"] != null,
             supportingText = { errors["order_description"]?.let { Text(it) } },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !isSaving
         )
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Поле user_id – для admin/engineer можно ввести ID пользователя; для user будет заполнено автоматически
+        // Поле "Автор" – нередактируемое, показывает имя автора
         OutlinedTextField(
-            value = current.user_id,
-            onValueChange = { orderController.updateField("user_id", it) },
-            label = { Text("ID владельца") },
-            isError = errors["user_id"] != null,
-            supportingText = { errors["user_id"]?.let { Text(it) } },
-            modifier = Modifier.fillMaxWidth()
+            value = authorName,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Автор") },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = false
         )
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-        // Признак завершённости
-        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(
-                checked = current.is_completed,
-                onCheckedChange = { orderController.updateField("is_completed", it.toString()) }
+                checked = currentOrder?.is_completed ?: false,
+                onCheckedChange = { orderController.updateField("is_completed", it.toString()) },
+                enabled = !isSaving && isAdminOrEngineer
             )
             Text("Завершён")
         }
 
-        // Почасовая оплата
-        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            Checkbox(
-                checked = current.is_time,
-                onCheckedChange = { orderController.updateField("is_time", it.toString()) }
-            )
-            Text("Почасовая оплата")
+        if (isAdminOrEngineer) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(
+                    checked = currentOrder?.is_time ?: false,
+                    onCheckedChange = { orderController.updateField("is_time", it.toString()) },
+                    enabled = !isSaving
+                )
+                Text("Почасовая оплата")
+            }
         }
 
         Spacer(modifier = Modifier.height(24.dp))
         Row(horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth()) {
-            Button(onClick = { orderController.saveOrder() }) { Text("Сохранить") }
-            Button(onClick = onCancel, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)) { Text("Отмена") }
-        }
-
-        message?.let {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(it)
-        }
-
-        LaunchedEffect(message) {
-            if (message == "Заказ создан" || message == "Заказ обновлён") {
-                onSaved()
+            if (isSaving) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Сохранение...")
+                }
+            } else {
+                Button(onClick = {
+                    isSaving = true
+                    orderController.saveOrder()
+                }) { Text("Сохранить") }
+                Button(onClick = onCancel,
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                ) { Text("Отмена") }
             }
         }
     }
