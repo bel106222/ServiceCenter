@@ -48,6 +48,10 @@ import ru.bel.servicecenter.ui.screens.SelectClientScreen
 import ru.bel.servicecenter.ui.screens.LoginScreen
 import ru.bel.servicecenter.ui.screens.NotAClientScreen
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.foundation.background
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.graphics.Color
 import timber.log.Timber
 
 class MainActivity : ComponentActivity() {
@@ -80,6 +84,8 @@ class MainActivity : ComponentActivity() {
                 var factoryState by remember { mutableStateOf<FactoryState>(FactoryState.Idle) }
                 var showHistoryDialog by remember { mutableStateOf(false) }
                 var pendingOrders by remember { mutableStateOf<List<Order>?>(null) }
+                var isOrdersLoading by remember { mutableStateOf(false) }
+                var isOrderLoadingForEdit by remember { mutableStateOf(false) }
 
                 LaunchedEffect(Unit) {
                     val conn = RepositoryProvider.checkConnection()
@@ -145,14 +151,15 @@ class MainActivity : ComponentActivity() {
                             val priceController = remember { PriceController() }
                             val serviceController = remember { ServiceController() }
                             val orderController = remember { OrderController() }
+                            val orderItemController = remember { OrderItemController() }
 
                             val loggedUser by authController.loggedUser.collectAsState()
 
                             LaunchedEffect(loggedUser) {
                                 loggedUser?.let { user ->
-                                    val roleName = authController.getRoleName(user.role_id)
+                                    val roleName = authController.userRole.value
                                     orderController.currentAuthUser = user
-                                    Timber.d("MainActivity: currentAuthUser set to ${user.user_name}")
+                                    Timber.d("MainActivity: orderController.currentAuthUser = ${user.user_name}")
                                     when (roleName) {
                                         "user" -> {
                                             if (user.client_id.isNullOrBlank()) {
@@ -214,18 +221,28 @@ class MainActivity : ComponentActivity() {
                                 composable("dashboard") {
                                     val currentUser by authController.loggedUser.collectAsState()
                                     currentUser?.let { user ->
-                                        val roleName = remember { mutableStateOf<String?>(null) }
-                                        LaunchedEffect(user) {
-                                            roleName.value = authController.getRoleName(user.role_id)
-                                        }
-                                        roleName.value?.let { role ->
-                                            val items = when (role) {
+                                        val currentRole by authController.userRole.collectAsState()
+                                        if (currentRole == null) {
+                                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                                CircularProgressIndicator()
+                                            }
+                                        } else {
+                                            val items = when (currentRole) {
                                                 "user" -> listOf(
                                                     DashboardItem("Профиль") { navController.navigate("user_profile") },
                                                     DashboardItem("Заказы") {
-                                                        coroutineScope.launch {
-                                                            pendingOrders = orderController.fetchOrders()
-                                                            navController.navigate("orders")
+                                                        if (!isOrdersLoading) {
+                                                            isOrdersLoading = true
+                                                            coroutineScope.launch {
+                                                                try {
+                                                                    orderController.loadOrders()
+                                                                } catch (e: Exception) {
+                                                                    LoggerService.log("Ошибка загрузки заказов: ${e.message}")
+                                                                } finally {
+                                                                    isOrdersLoading = false
+                                                                }
+                                                                navController.navigate("orders")
+                                                            }
                                                         }
                                                     }
                                                 )
@@ -236,9 +253,18 @@ class MainActivity : ComponentActivity() {
                                                     DashboardItem("Цены") { navController.navigate("prices") },
                                                     DashboardItem("Услуги") { navController.navigate("services") },
                                                     DashboardItem("Заказы") {
-                                                        coroutineScope.launch {
-                                                            pendingOrders = orderController.fetchOrders()
-                                                            navController.navigate("orders")
+                                                        if (!isOrdersLoading) {
+                                                            isOrdersLoading = true
+                                                            coroutineScope.launch {
+                                                                try {
+                                                                    orderController.loadOrders()
+                                                                } catch (e: Exception) {
+                                                                    LoggerService.log("Ошибка загрузки заказов: ${e.message}")
+                                                                } finally {
+                                                                    isOrdersLoading = false
+                                                                }
+                                                                navController.navigate("orders")
+                                                            }
                                                         }
                                                     }
                                                 )
@@ -250,9 +276,18 @@ class MainActivity : ComponentActivity() {
                                                     DashboardItem("Цены") { navController.navigate("prices") },
                                                     DashboardItem("Услуги") { navController.navigate("services") },
                                                     DashboardItem("Заказы") {
-                                                        coroutineScope.launch {
-                                                            pendingOrders = orderController.fetchOrders()
-                                                            navController.navigate("orders")
+                                                        if (!isOrdersLoading) {
+                                                            isOrdersLoading = true
+                                                            coroutineScope.launch {
+                                                                try {
+                                                                    orderController.loadOrders()
+                                                                } catch (e: Exception) {
+                                                                    LoggerService.log("Ошибка загрузки заказов: ${e.message}")
+                                                                } finally {
+                                                                    isOrdersLoading = false
+                                                                }
+                                                                navController.navigate("orders")
+                                                            }
                                                         }
                                                     },
                                                     DashboardItem("База данных") { navController.navigate("admin_database") }
@@ -488,114 +523,98 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 composable("orders") {
-                                    val orders = pendingOrders
-                                    if (orders == null) {
-                                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                            CircularProgressIndicator()
-                                        }
-                                    } else {
-                                        OrdersListScreen(
-                                            orders = orders,
-                                            onEditOrder = { order ->
-                                                navController.navigate("order_edit/${order.id}")
-                                            },
-                                            onAddNewOrder = { navController.navigate("order_new") },
-                                            onBack = { navController.popBackStack() }
-                                        )
-                                    }
-                                }
-
-                                composable("order_new") {
-                                    val currentUser by authController.loggedUser.collectAsState()
-                                    val isInitializing by orderController.isInitializing.collectAsState()
-                                    LaunchedEffect(currentUser) {
-                                        orderController.currentAuthUser = currentUser
-                                        orderController.initForCreating()
-                                    }
-                                    if (isInitializing || orderController.currentOrder.value == null) {
-                                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                                CircularProgressIndicator()
-                                                Spacer(modifier = Modifier.height(8.dp))
-                                                Text("Генерация номера заказа...")
+                                    OrdersListScreen(
+                                        orderController = orderController,
+                                        onEditOrder = { order ->
+                                            if (!isOrderLoadingForEdit) {
+                                                isOrderLoadingForEdit = true
+                                                coroutineScope.launch {
+                                                    try {
+                                                        orderController.loadOrders() // загружаем свежие данные
+                                                        val freshOrder = orderController.orders.value.find { it.id == order.id }
+                                                        if (freshOrder != null) {
+                                                            orderController.prepareForEdit(freshOrder)
+                                                            navController.navigate("order_edit")
+                                                        } else {
+                                                            LoggerService.log("Заказ не найден")
+                                                        }
+                                                    } catch (e: Exception) {
+                                                        LoggerService.log("Ошибка загрузки заказа: ${e.message}")
+                                                    } finally {
+                                                        isOrderLoadingForEdit = false
+                                                    }
+                                                }
                                             }
-                                        }
-                                    } else {
-                                        OrderEditScreen(
-                                            orderController = orderController,
-                                            onSaved = {
-                                                coroutineScope.launch {
-                                                    pendingOrders = orderController.fetchOrders()
-                                                    navController.popBackStack()
-                                                }
-                                            },
-                                            onCancel = { navController.popBackStack() }
-                                        )
-                                    }
-                                }
-
-                                composable("order_edit/{orderId}") { backStackEntry ->
-                                    val currentUser by authController.loggedUser.collectAsState()
-                                    val orderId = backStackEntry.arguments?.getString("orderId") ?: ""
-                                    val isInitializing by orderController.isInitializing.collectAsState()
-                                    LaunchedEffect(currentUser, orderId) {
-                                        orderController.currentAuthUser = currentUser
-                                        val order = orderController.orders.value.find { it.id == orderId }
-                                        if (order != null) {
-                                            orderController.initForEditing(order)
-                                        }
-                                    }
-                                    if (isInitializing || orderController.currentOrder.value == null) {
-                                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                            CircularProgressIndicator()
-                                        }
-                                    } else {
-                                        OrderEditScreen(
-                                            orderController = orderController,
-                                            onSaved = {
-                                                coroutineScope.launch {
-                                                    pendingOrders = orderController.fetchOrders()
-                                                    navController.popBackStack()
-                                                }
-                                            },
-                                            onCancel = { navController.popBackStack() }
-                                        )
-                                    }
-                                }
-
-                                composable(
-                                    "order_items/{orderId}",
-                                    arguments = listOf(navArgument("orderId") { type = NavType.StringType })
-                                ) { backStackEntry ->
-                                    val currentUser by authController.loggedUser.collectAsState()
-                                    val orderId = backStackEntry.arguments?.getString("orderId") ?: ""
-                                    val orderItemController = remember {
-                                        OrderItemController().apply {
-                                            this.currentOrderId = orderId
-                                            this.currentAuthUser = currentUser
-                                        }
-                                    }
-                                    OrderItemListScreen(
-                                        orderItemController = orderItemController,
-                                        onEditItem = { item ->
-                                            orderItemController.setEditingItem(item)
-                                            navController.navigate("order_item_edit/$orderId")
+                                        },
+                                        onAddNewOrder = {
+                                            orderController.prepareForNewOrder()
+                                            navController.navigate("order_new")
                                         },
                                         onBack = { navController.popBackStack() }
                                     )
                                 }
 
-                                composable(
-                                    "order_item_edit/{orderId}",
-                                    arguments = listOf(navArgument("orderId") { type = NavType.StringType })
-                                ) { backStackEntry ->
+                                composable("order_new") {
                                     val currentUser by authController.loggedUser.collectAsState()
-                                    val orderId = backStackEntry.arguments?.getString("orderId") ?: ""
-                                    val orderItemController = remember {
-                                        OrderItemController().apply {
-                                            this.currentOrderId = orderId
-                                            this.currentAuthUser = currentUser
-                                        }
+                                    LaunchedEffect(currentUser) {
+                                        orderItemController.currentAuthUser = currentUser
+                                        orderItemController.loadServices()
+                                    }
+                                    OrderEditScreen(
+                                        orderController = orderController,
+                                        onAddItem = {
+                                            // Устанавливаем id текущего заказа (он уже сгенерирован в prepareForNewOrder)
+                                            orderItemController.currentOrderId = orderController.currentOrder.value?.id ?: ""
+                                            orderItemController.startNewItem()
+                                            navController.navigate("order_item_new")
+                                        },
+                                        onEditItem = { item -> /* для нового заказа этот колбэк не нужен, но оставьте */ },
+                                        onSaved = { navController.popBackStack() },
+                                        onCancel = { navController.popBackStack() }
+                                    )
+                                }
+
+                                composable("order_edit") {
+                                    val currentUser by authController.loggedUser.collectAsState()
+                                    LaunchedEffect(currentUser) {
+                                        orderItemController.currentAuthUser = currentUser
+                                        orderItemController.loadServices()
+                                    }
+                                    OrderEditScreen(
+                                        orderController = orderController,
+                                        onAddItem = {
+                                            orderItemController.currentOrderId = orderController.currentOrder.value?.id ?: ""
+                                            orderItemController.startNewItem()
+                                            navController.navigate("order_item_new")
+                                        },
+                                        onEditItem = { item ->
+                                            orderItemController.currentOrderId = item.order_id
+                                            orderItemController.startEditing(item)
+                                            navController.navigate("order_item_edit")
+                                        },
+                                        onSaved = { navController.popBackStack() },
+                                        onCancel = { navController.popBackStack() }
+                                    )
+                                }
+
+                                composable("order_item_new") {
+                                    val currentUser by authController.loggedUser.collectAsState()
+                                    LaunchedEffect(Unit) {
+                                        orderItemController.currentAuthUser = currentUser
+                                        orderItemController.loadServices()   // ← загружаем услуги
+                                    }
+                                    OrderItemEditScreen(
+                                        orderItemController = orderItemController,
+                                        onSaved = { navController.popBackStack() },
+                                        onCancel = { navController.popBackStack() }
+                                    )
+                                }
+
+                                composable("order_item_edit") {
+                                    val currentUser by authController.loggedUser.collectAsState()
+                                    LaunchedEffect(Unit) {
+                                        orderItemController.currentAuthUser = currentUser
+                                        orderItemController.loadServices()   // ← загружаем услуги
                                     }
                                     OrderItemEditScreen(
                                         orderItemController = orderItemController,
@@ -614,6 +633,22 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 } // Scaffold
+
+                if (isOrdersLoading || isOrderLoadingForEdit) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.4f))
+                            .pointerInput(Unit) { detectTapGestures { } },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator()
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("Загрузка...", color = Color.White)
+                        }
+                    }
+                }
 
                 if (showHistoryDialog) {
                     val logs by statusViewModel.logs.collectAsState()

@@ -20,6 +20,9 @@ class AuthController : ViewModel() {
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
 
+    private val _userRole = MutableStateFlow<String?>(null)
+    val userRole: StateFlow<String?> = _userRole
+
     /**
      * Попытка входа по email и паролю.
      */
@@ -29,6 +32,7 @@ class AuthController : ViewModel() {
                 val user = RepositoryProvider.userRepo.getUserByEmail(email)
                 if (user != null && BCrypt.checkpw(password, user.user_password)) {
                     _loggedUser.value = user
+                    _userRole.value = getRoleName(user.role_id)   // suspend, но мы в корутине
                     _error.value = null
                     Timber.i("Успешный вход: ${user.user_email}")
                 } else {
@@ -70,6 +74,7 @@ class AuthController : ViewModel() {
                 RepositoryProvider.userRepo.createUser(newUser)
                 // Автоматический вход после регистрации
                 _loggedUser.value = newUser
+                _userRole.value = "user"   // т.к. регистрируем всегда как user
                 _error.value = null
                 Timber.i("Зарегистрирован и выполнен вход: ${newUser.user_email}")
             } catch (e: Exception) {

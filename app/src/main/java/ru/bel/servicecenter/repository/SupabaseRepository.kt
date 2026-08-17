@@ -18,15 +18,14 @@ class SupabaseRepository : ClientRepository, RoleRepository, UserRepository,
     private val json = Json {
         ignoreUnknownKeys = true
         isLenient = true
-        encodeDefaults = false
+        encodeDefaults = true    // было false
     }
 
     private val baseUrl = BuildConfig.SUPABASE_URL + "/rest/v1"
     private val apiKey = BuildConfig.SUPABASE_KEY
 
     /**
-     * Отправляет запрос и читает ответ (чтобы корректно закрыть соединение).
-     * Таймауты увеличены до 30 секунд.
+     * Универсальная отправка запроса. Принимает уже готовую JSON-строку для тела.
      */
     private suspend fun sendRequest(
         method: String,
@@ -44,8 +43,8 @@ class SupabaseRepository : ClientRepository, RoleRepository, UserRepository,
             connection.setRequestProperty("Authorization", "Bearer $apiKey")
             connection.setRequestProperty("Content-Type", "application/json")
             connection.setRequestProperty("Connection", "close")
-            connection.connectTimeout = 30_000
-            connection.readTimeout = 30_000
+            connection.connectTimeout = 15_000
+            connection.readTimeout = 15_000
             connection.doOutput = true
 
             if (bodyString != null) {
@@ -57,8 +56,11 @@ class SupabaseRepository : ClientRepository, RoleRepository, UserRepository,
 
             connection.connect()
             val responseCode = connection.responseCode
-            // Читаем ответ (даже если он не нужен) – это освобождает соединение
-            val responseText = connection.inputStream.bufferedReader().use { it.readText() }
+            val responseText = if (responseCode in 200..299) {
+                connection.inputStream.bufferedReader().use { it.readText() }
+            } else {
+                connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+            }
             LoggerService.log("$method $table → $responseCode: ${responseText.take(100)}")
 
             if (responseCode !in 200..299) {
@@ -70,24 +72,28 @@ class SupabaseRepository : ClientRepository, RoleRepository, UserRepository,
         }
     }
 
+    // POST – создание, возвращаем переданный объект (ответ не читаем)
     private suspend inline fun <reified T> post(table: String, body: T): T {
         val jsonBody = json.encodeToString(body)
         sendRequest("POST", table, jsonBody)
         return body
     }
 
+    // PATCH – обновление
     private suspend inline fun <reified T> patch(table: String, id: String, body: T): T {
         val jsonBody = json.encodeToString(body)
         sendRequest("PATCH", table, jsonBody, id)
         return body
     }
 
+    // Soft delete – PATCH с установкой deleted_at
     private suspend fun softDelete(table: String, id: String) {
         val bodyMap = mapOf("deleted_at" to java.time.LocalDateTime.now().toString())
         val jsonBody = json.encodeToString(bodyMap)
         sendRequest("PATCH", table, jsonBody, id)
     }
 
+    // GET – получение списка (выполняется в фоновом потоке)
     private suspend inline fun <reified T> get(
         table: String,
         vararg queryParams: Pair<String, String>
@@ -107,7 +113,11 @@ class SupabaseRepository : ClientRepository, RoleRepository, UserRepository,
 
             connection.connect()
             val responseCode = connection.responseCode
-            val body = connection.inputStream.bufferedReader().use { it.readText() }
+            val body = if (responseCode == 200) {
+                connection.inputStream.bufferedReader().use { it.readText() }
+            } else {
+                connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+            }
             if (responseCode != 200) {
                 throw Exception("GET $url → $responseCode: $body")
             }
@@ -117,17 +127,19 @@ class SupabaseRepository : ClientRepository, RoleRepository, UserRepository,
         }
     }
 
-    // ------------------- Реализация интерфейсов (без изменений) -------------------
+    // ------------------- Client -------------------
     override suspend fun createClient(client: Client) = post("clients", client)
     override suspend fun updateClient(client: Client) = patch("clients", client.id, client)
     override suspend fun deleteClient(client: Client) = softDelete("clients", client.id)
     override suspend fun getAllClients(): List<Client> =
         get("clients", "select" to "*", "deleted_at" to "is.null")
 
+    // ------------------- Role -------------------
     override suspend fun createRole(role: Role) = post("roles", role)
     override suspend fun getRoleByName(name: String): Role? =
         get<Role>("roles", "select" to "*", "role_name" to "eq.$name").firstOrNull()
 
+    // ------------------- User -------------------
     override suspend fun createUser(user: User) = post("users", user)
     override suspend fun updateUser(user: User) = patch("users", user.id, user)
     override suspend fun deleteUser(user: User) = softDelete("users", user.id)
@@ -138,6 +150,7 @@ class SupabaseRepository : ClientRepository, RoleRepository, UserRepository,
     override suspend fun getAllUsers(): List<User> =
         get("users", "select" to "*", "deleted_at" to "is.null")
 
+    // ------------------- Category -------------------
     override suspend fun createCategory(category: Category) = post("categories", category)
     override suspend fun updateCategory(category: Category) = patch("categories", category.id, category)
     override suspend fun deleteCategory(category: Category) = softDelete("categories", category.id)
@@ -146,6 +159,7 @@ class SupabaseRepository : ClientRepository, RoleRepository, UserRepository,
     override suspend fun getCategoryByName(name: String): Category? =
         get<Category>("categories", "select" to "*", "category_name" to "eq.$name").firstOrNull()
 
+    // ------------------- Service -------------------
     override suspend fun createService(service: Service) = post("services", service)
     override suspend fun updateService(service: Service) = patch("services", service.id, service)
     override suspend fun deleteService(service: Service) = softDelete("services", service.id)
@@ -156,6 +170,7 @@ class SupabaseRepository : ClientRepository, RoleRepository, UserRepository,
     override suspend fun getServiceByName(name: String): Service? =
         get<Service>("services", "select" to "*", "service_name" to "eq.$name").firstOrNull()
 
+    // ------------------- Price -------------------
     override suspend fun createPrice(price: Price) = post("prices", price)
     override suspend fun updatePrice(price: Price) = patch("prices", price.id, price)
     override suspend fun deletePrice(price: Price) = softDelete("prices", price.id)
@@ -164,6 +179,7 @@ class SupabaseRepository : ClientRepository, RoleRepository, UserRepository,
     override suspend fun getAllPrices(): List<Price> =
         get("prices", "select" to "*", "deleted_at" to "is.null")
 
+    // ------------------- Order -------------------
     override suspend fun createOrder(order: Order) = post("orders", order)
     override suspend fun updateOrder(order: Order) = patch("orders", order.id, order)
     override suspend fun deleteOrder(order: Order) = softDelete("orders", order.id)
@@ -173,14 +189,17 @@ class SupabaseRepository : ClientRepository, RoleRepository, UserRepository,
         get<Order>("orders", "select" to "*", "order_number" to "eq.$orderNumber").firstOrNull()
     override suspend fun getAllOrders(): List<Order> =
         get("orders", "select" to "*", "deleted_at" to "is.null")
+    override suspend fun getOrderById(orderId: String): Order? =
+        get<Order>("orders", "select" to "*", "id" to "eq.$orderId").firstOrNull()
 
+    // ------------------- OrderItem -------------------
     override suspend fun createOrderItem(item: OrderItem) = post("order_items", item)
     override suspend fun updateOrderItem(item: OrderItem) = patch("order_items", item.id, item)
     override suspend fun deleteOrderItem(item: OrderItem) = softDelete("order_items", item.id)
     override suspend fun getOrderItemsByOrderId(orderId: String): List<OrderItem> =
         get("order_items", "select" to "*", "order_id" to "eq.$orderId", "deleted_at" to "is.null")
 
-    // ---------- Проверки БД (IO) ----------
+    // ------------------- Проверки БД -------------------
     suspend fun checkConnection(): Boolean = withContext(Dispatchers.IO) {
         LoggerService.log("Проверка подключения к БД...")
         try {
@@ -201,10 +220,18 @@ class SupabaseRepository : ClientRepository, RoleRepository, UserRepository,
         }
     }
 
+    suspend fun checkTablesExist(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            get<Role>("roles", "select" to "id", "limit" to "1")
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     suspend fun checkAdminExists(): Boolean = withContext(Dispatchers.IO) {
         try {
             LoggerService.log("Проверка наличия администратора...")
-            // Запрашиваем user_name вместо id
             val url = "$baseUrl/users?select=user_name&user_name=eq.admin"
             val connection = URL(url).openConnection() as HttpURLConnection
             connection.requestMethod = "GET"
@@ -224,7 +251,6 @@ class SupabaseRepository : ClientRepository, RoleRepository, UserRepository,
             LoggerService.log("Ответ сервера: $responseCode – $body")
 
             if (responseCode == 200) {
-                // Теперь проверяем наличие "user_name":"admin" в ответе
                 val exists = body.contains("\"user_name\":\"admin\"")
                 LoggerService.log(if (exists) "Администратор найден" else "Администратор отсутствует")
                 exists

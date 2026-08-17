@@ -6,20 +6,23 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import ru.bel.servicecenter.controllers.OrderController
 import ru.bel.servicecenter.models.Order
 
-/**
- * Экран списка заказов.
- * Получает уже загруженный список и отображает его без дополнительных запросов.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OrdersListScreen(
-    orders: List<Order>,
+    orderController: OrderController,
     onEditOrder: (Order) -> Unit,
     onAddNewOrder: () -> Unit,
     onBack: () -> Unit
 ) {
+    val orders by orderController.orders.collectAsState()
+    val message by orderController.message.collectAsState()
+    var showMessage by remember { mutableStateOf(false) }
+
+    LaunchedEffect(message) { if (message != null) showMessage = true }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -44,13 +47,25 @@ fun OrdersListScreen(
                         Text("Сумма: ${order.order_sum}")
                         Row {
                             TextButton(onClick = { onEditOrder(order) }) { Text("Изменить") }
-                            // Кнопка удаления может быть добавлена позже, если требуется.
-                            // Для неё потребуется доступ к OrderController в этом экране,
-                            // но текущая задача не подразумевает удаление.
+                            TextButton(onClick = { orderController.deleteOrder(order) }) { Text("Удалить") }
                         }
                     }
                 }
             }
         }
+    }
+
+    if (showMessage) {
+        AlertDialog(
+            onDismissRequest = { showMessage = false },
+            title = { Text("Сообщение") },
+            text = { Text(message ?: "") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showMessage = false
+                    orderController.clearMessage()
+                }) { Text("OK") }
+            }
+        )
     }
 }

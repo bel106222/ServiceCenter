@@ -5,9 +5,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import ru.bel.servicecenter.models.OrderItem
+import ru.bel.servicecenter.models.Service
 import ru.bel.servicecenter.models.User
 import ru.bel.servicecenter.repository.RepositoryProvider
-import ru.bel.servicecenter.rules.ValidationRules
 import timber.log.Timber
 
 class OrderItemController : ViewModel() {
@@ -15,13 +15,17 @@ class OrderItemController : ViewModel() {
     private val _items = MutableStateFlow<List<OrderItem>>(emptyList())
     val items: StateFlow<List<OrderItem>> = _items
 
-    private val _currentItem = MutableStateFlow(
-        OrderItem(order_id = "", service_id = "", user_id = "")
-    )
-    val currentItem: StateFlow<OrderItem> = _currentItem
+    private val _services = MutableStateFlow<List<Service>>(emptyList())
+    val services: StateFlow<List<Service>> = _services
 
-    private val _errors = MutableStateFlow<Map<String, String?>>(emptyMap())
-    val errors: StateFlow<Map<String, String?>> = _errors
+    // Кэш актуальных цен: serviceId -> стоимость последней цены
+    private val priceCache = mutableMapOf<String, Float>()
+
+    private val _currentItem = MutableStateFlow<OrderItem?>(null)
+    val currentItem: StateFlow<OrderItem?> = _currentItem
+
+    private val _selectedService = MutableStateFlow<Service?>(null)
+    val selectedService: StateFlow<Service?> = _selectedService
 
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
@@ -29,83 +33,144 @@ class OrderItemController : ViewModel() {
     var currentAuthUser: User? = null
     var currentOrderId: String = ""
 
-    fun loadItems() {
+    /**
+     * Загружает услуги и актуальные цены в кэш.
+     * Для каждой услуги выбирается цена с самой поздней датой создания.
+     */
+    fun loadServices() {
         viewModelScope.launch {
             try {
-                if (currentOrderId.isBlank()) {
-                    _items.value = emptyList(); return@launch
-                }
-                _items.value = RepositoryProvider.orderItemRepo.getOrderItemsByOrderId(currentOrderId)
+                _services.value = RepositoryProvider.serviceRepo.getAllServices()
+                val allPrices = RepositoryProvider.priceRepo.getAllPrices()
+                val latestPrices = allPrices
+                    .groupBy { it.service_id }
+                    .mapValues { (_, prices) ->
+                        prices.maxByOrNull { it.created_at }?.service_cost ?: 0f
+                    }
+                priceCache.clear()
+                priceCache.putAll(latestPrices)
+            } catch (e: Exception) {
+                _message.value = "Ошибка загрузки услуг: ${e.message}"
+            }
+        }
+    }
+
+    fun loadItems(orderId: String) {
+        viewModelScope.launch {
+            try {
+                _items.value = RepositoryProvider.orderItemRepo.getOrderItemsByOrderId(orderId)
             } catch (e: Exception) {
                 _message.value = "Ошибка загрузки позиций: ${e.message}"
             }
         }
     }
 
-    fun saveItem() {
-        val item = _currentItem.value
-        val authUser = currentAuthUser
+    fun startNewItem() {
+        val user = currentAuthUser ?: return
+        _currentItem.value = OrderItem(
+            order_id = currentOrderId,
+            service_id = "",
+            user_id = user.id,
+            orderitem_quantity = 1,
+            orderitem_cost = 0f,
+            is_online = false
+        )
+        _selectedService.value = null
+        _message.value = null
+    }
+
+    fun startEditing(item: OrderItem) {
+        _currentItem.value = item
+        _selectedService.value = _services.value.find { it.id == item.service_id }
+        _message.value = null
+    }
+
+    /**
+     * Выбирает услугу, автоматически подставляя количество = 1 и стоимость из кэша.
+     */
+    fun selectService(service: Service) {
+        _selectedService.value = service
+        val item = _currentItem.value ?: return
+        val cost = priceCache[service.id] ?: 0f
+        _currentItem.value = item.copy(
+            service_id = service.id,
+            orderitem_quantity = 1,
+            orderitem_cost = cost
+        )
+    }
+
+    fun updateQuantity(quantity: Int) {
+        val item = _currentItem.value ?: return
+        _currentItem.value = item.copy(orderitem_quantity = quantity)
+        recalculateCost()
+    }
+
+    fun updateCost(cost: Float) {
+        val item = _currentItem.value ?: return
+        _currentItem.value = item.copy(orderitem_cost = cost)
+    }
+
+    fun updateIsOnline(value: Boolean) {
+        val item = _currentItem.value ?: return
+        _currentItem.value = item.copy(is_online = value)
+    }
+
+    /**
+     * Пересчитывает стоимость на основе цены услуги из кэша и количества.
+     */
+    fun recalculateCost() {
+        val item = _currentItem.value ?: return
+        val service = _selectedService.value ?: return
+        val baseCost = priceCache[service.id] ?: 0f
+        _currentItem.value = item.copy(orderitem_cost = baseCost * item.orderitem_quantity)
+    }
+
+    fun saveItem(onSaved: () -> Unit) {
+        val item = _currentItem.value ?: return
+        val authUser = currentAuthUser ?: run { _message.value = "Не выполнен вход"; return }
 
         viewModelScope.launch {
-            if (authUser == null) { _message.value = "Не выполнен вход"; return@launch }
             if (!canModify(authUser)) {
-                _message.value = "Недостаточно прав для изменения позиций заказа"; return@launch
+                _message.value = "Недостаточно прав для изменения позиций заказа"
+                return@launch
             }
-
-            val errs = mutableMapOf<String, String?>()
-            errs["service_id"] = if (item.service_id.isBlank()) "Выберите услугу" else null
-            errs["user_id"] = if (item.user_id.isBlank()) "Инженер не выбран" else null
-            errs["orderitem_cost"] = if (item.orderitem_cost <= 0) "Стоимость должна быть > 0" else null
-            _errors.value = errs
-            if (errs.any { it.value != null }) return@launch
-
             try {
-                val newItem = item.copy(order_id = currentOrderId)
                 if (item.id.isEmpty() || _items.value.none { it.id == item.id }) {
-                    RepositoryProvider.orderItemRepo.createOrderItem(newItem)
+                    RepositoryProvider.orderItemRepo.createOrderItem(item)
                     _message.value = "Позиция добавлена"
                 } else {
-                    RepositoryProvider.orderItemRepo.updateOrderItem(newItem)
+                    RepositoryProvider.orderItemRepo.updateOrderItem(item)
                     _message.value = "Позиция обновлена"
                 }
-                loadItems()
+                loadItems(item.order_id)
+                onSaved()
             } catch (e: Exception) {
                 _message.value = "Ошибка сохранения позиции: ${e.message}"
+                Timber.e(e, "saveItem error")
             }
         }
     }
 
-    fun deleteItem(item: OrderItem) {
-        val authUser = currentAuthUser
+    fun deleteItem(item: OrderItem, onDeleted: () -> Unit) {
+        val authUser = currentAuthUser ?: run { _message.value = "Не выполнен вход"; return }
         viewModelScope.launch {
-            if (authUser == null || !canModify(authUser)) {
-                _message.value = "Недостаточно прав"; return@launch
+            if (!canModify(authUser)) {
+                _message.value = "Недостаточно прав"
+                return@launch
             }
             try {
                 RepositoryProvider.orderItemRepo.deleteOrderItem(item)
-                loadItems()
                 _message.value = "Позиция удалена"
+                loadItems(item.order_id)
+                onDeleted()
             } catch (e: Exception) {
                 _message.value = "Ошибка удаления позиции: ${e.message}"
             }
         }
     }
 
-    fun setEditingItem(item: OrderItem) {
-        _currentItem.value = item
-        _errors.value = emptyMap()
-    }
-
-    fun updateField(field: String, value: String) {
-        val i = _currentItem.value
-        _currentItem.value = when (field) {
-            "service_id" -> i.copy(service_id = value)
-            "user_id" -> i.copy(user_id = value)
-            "quantity" -> i.copy(orderitem_quantity = value.toIntOrNull() ?: 1)
-            "cost" -> i.copy(orderitem_cost = value.toFloatOrNull() ?: 0f)
-            "is_online" -> i.copy(is_online = value.toBoolean())
-            else -> i
-        }
+    fun clearMessage() {
+        _message.value = null
     }
 
     private suspend fun canModify(user: User): Boolean {
