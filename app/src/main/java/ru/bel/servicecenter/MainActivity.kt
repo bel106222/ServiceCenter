@@ -152,7 +152,7 @@ class MainActivity : ComponentActivity() {
                             val serviceController = remember { ServiceController() }
                             val orderController = remember { OrderController() }
                             val orderItemController = remember { OrderItemController() }
-
+                            orderItemController.orderController = orderController
                             val loggedUser by authController.loggedUser.collectAsState()
 
                             LaunchedEffect(loggedUser) {

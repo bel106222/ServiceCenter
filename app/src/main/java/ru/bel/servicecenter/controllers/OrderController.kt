@@ -78,6 +78,7 @@ class OrderController : ViewModel() {
         _clients.value = RepositoryProvider.clientRepo.getAllClients()
         isAdminOrEngineer = role == "admin" || role == "engineer"
         _services.value = RepositoryProvider.serviceRepo.getAllServices()
+
     }
 
     /**

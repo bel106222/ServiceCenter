@@ -126,10 +126,16 @@ fun OrderItemEditScreen(
                     Text("Сохранение...")
                 }
             } else {
-                Button(onClick = {
-                    isSaving = true
-                    orderItemController.saveItem(onSaved = {})
-                }) { Text("Сохранить") }
+                Button(
+                    onClick = {
+                        isSaving = true
+                        orderItemController.saveItem(onSaved = {
+                            isSaving = false
+                            onSaved()   // вызываем внешний колбэк, закрывающий окно
+                        })
+                    },
+                    enabled = !isSaving
+                ) { Text("Сохранить") }
                 Button(onClick = onCancel,
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
                 ) { Text("Отмена") }

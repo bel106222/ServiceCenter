@@ -33,6 +33,10 @@ class OrderItemController : ViewModel() {
     var currentAuthUser: User? = null
     var currentOrderId: String = ""
 
+    var orderController: OrderController? = null
+
+    private var isSaving = false   // флаг, чтобы избежать повторного сохранения
+
     /**
      * Загружает услуги и актуальные цены в кэш.
      * Для каждой услуги выбирается цена с самой поздней датой создания.
@@ -126,27 +130,35 @@ class OrderItemController : ViewModel() {
     }
 
     fun saveItem(onSaved: () -> Unit) {
+        if (isSaving) return   // уже идёт сохранение
         val item = _currentItem.value ?: return
         val authUser = currentAuthUser ?: run { _message.value = "Не выполнен вход"; return }
 
         viewModelScope.launch {
-            if (!canModify(authUser)) {
-                _message.value = "Недостаточно прав для изменения позиций заказа"
-                return@launch
-            }
+            isSaving = true
             try {
-                if (item.id.isEmpty() || _items.value.none { it.id == item.id }) {
+                if (!canModify(authUser)) {
+                    _message.value = "Недостаточно прав для изменения позиций заказа"
+                    return@launch
+                }
+                val isNew = item.id.isEmpty() || _items.value.none { it.id == item.id }
+                if (isNew) {
                     RepositoryProvider.orderItemRepo.createOrderItem(item)
                     _message.value = "Позиция добавлена"
                 } else {
                     RepositoryProvider.orderItemRepo.updateOrderItem(item)
                     _message.value = "Позиция обновлена"
                 }
+                // Пересчитываем сумму заказа
+                orderController?.updateOrderSum(item.order_id)
+                // Обновляем список позиций
                 loadItems(item.order_id)
-                onSaved()
+                onSaved()   // ← закрываем окно
             } catch (e: Exception) {
                 _message.value = "Ошибка сохранения позиции: ${e.message}"
                 Timber.e(e, "saveItem error")
+            } finally {
+                isSaving = false
             }
         }
     }
@@ -162,6 +174,7 @@ class OrderItemController : ViewModel() {
                 RepositoryProvider.orderItemRepo.deleteOrderItem(item)
                 _message.value = "Позиция удалена"
                 loadItems(item.order_id)
+                orderController?.updateOrderSum(item.order_id)   // пересчитываем сумму заказа
                 onDeleted()
             } catch (e: Exception) {
                 _message.value = "Ошибка удаления позиции: ${e.message}"

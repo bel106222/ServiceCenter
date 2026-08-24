@@ -1,4 +1,5 @@
 package ru.bel.servicecenter.ui.screens
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -21,11 +22,12 @@ fun OrderEditScreen(
 ) {
     val currentOrder by orderController.currentOrder.collectAsState()
     val orderItems by orderController.orderItems.collectAsState()
+    val services by orderController.services.collectAsState()   // ← получить услуги
     val errors by orderController.errors.collectAsState()
     val message by orderController.message.collectAsState()
     val authorName by orderController.authorName.collectAsState()
     val isAdminOrEngineer = orderController.isAdminOrEngineer
-    val services by orderController.services.collectAsState()
+
     var isSaving by remember { mutableStateOf(false) }
 
     // Загружаем позиции при открытии, если заказ уже существует
@@ -122,7 +124,11 @@ fun OrderEditScreen(
                     Text("Почасовая оплата")
                 }
             }
-
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "Общая сумма заказа: ${currentOrder?.order_sum ?: 0f} руб.",
+                style = MaterialTheme.typography.titleMedium
+            )
             Spacer(modifier = Modifier.height(24.dp))
             Text("Позиции заказа", style = MaterialTheme.typography.titleMedium)
             Spacer(modifier = Modifier.height(8.dp))
@@ -130,8 +136,11 @@ fun OrderEditScreen(
             // Отображение позиций или сообщения об их отсутствии
             if (orderItems.isEmpty()) {
                 Text("По заказу услуг не оказано.")
+                Spacer(modifier = Modifier.weight(1f))   // занимаем оставшееся место, чтобы кнопки были внизу
             } else {
-                LazyColumn {
+                LazyColumn(
+                    modifier = Modifier.weight(1f)   // список занимает доступное место, кнопки остаются видимыми
+                ) {
                     items(orderItems) { item ->
                         Card(
                             modifier = Modifier
@@ -159,7 +168,10 @@ fun OrderEditScreen(
             }
 
             Spacer(modifier = Modifier.height(24.dp))
-            Row(horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth()) {
+            Row(
+                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 if (isSaving) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(modifier = Modifier.size(20.dp))
@@ -171,6 +183,7 @@ fun OrderEditScreen(
                         isSaving = true
                         orderController.saveOrder()
                     }) { Text("Сохранить") }
+                    Spacer(modifier = Modifier.width(16.dp))   // расстояние между кнопками
                     Button(onClick = onCancel,
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
                     ) { Text("Отмена") }
