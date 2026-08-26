@@ -266,7 +266,8 @@ class MainActivity : ComponentActivity() {
                                                                 navController.navigate("orders")
                                                             }
                                                         }
-                                                    }
+                                                    },
+                                                    DashboardItem("Тест") { navController.navigate("test") }
                                                 )
                                                 "admin" -> listOf(
                                                     DashboardItem("Профиль") { navController.navigate("admin_profile") },
@@ -629,6 +630,11 @@ class MainActivity : ComponentActivity() {
                                         onBack = { navController.popBackStack() }
                                     )
                                 }
+
+                                composable("test") {
+                                    TestScreen(onBack = { navController.popBackStack() })
+                                }
+
                             } // NavHost
                         }
                     }
