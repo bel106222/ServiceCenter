@@ -524,15 +524,16 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 composable("orders") {
+                                    val ordersWithItems by orderController.ordersWithItems.collectAsState()
                                     OrdersListScreen(
-                                        orderController = orderController,
+                                        orders = ordersWithItems,
                                         onEditOrder = { order ->
                                             if (!isOrderLoadingForEdit) {
                                                 isOrderLoadingForEdit = true
                                                 coroutineScope.launch {
                                                     try {
                                                         orderController.loadOrders() // загружаем свежие данные
-                                                        val freshOrder = orderController.orders.value.find { it.id == order.id }
+                                                        val freshOrder = orderController.ordersWithItems.value.find { it.id == order.id }
                                                         if (freshOrder != null) {
                                                             orderController.prepareForEdit(freshOrder)
                                                             navController.navigate("order_edit")
@@ -546,6 +547,9 @@ class MainActivity : ComponentActivity() {
                                                     }
                                                 }
                                             }
+                                        },
+                                        onDeleteOrder = { order ->
+                                            orderController.deleteOrder(order)
                                         },
                                         onAddNewOrder = {
                                             orderController.prepareForNewOrder()
@@ -564,12 +568,11 @@ class MainActivity : ComponentActivity() {
                                     OrderEditScreen(
                                         orderController = orderController,
                                         onAddItem = {
-                                            // Устанавливаем id текущего заказа (он уже сгенерирован в prepareForNewOrder)
-                                            orderItemController.currentOrderId = orderController.currentOrder.value?.id ?: ""
+                                            orderItemController.currentOrderId = orderController.currentOrderWithItems.value?.id ?: ""
                                             orderItemController.startNewItem()
                                             navController.navigate("order_item_new")
                                         },
-                                        onEditItem = { item -> /* для нового заказа этот колбэк не нужен, но оставьте */ },
+                                        onEditItem = { item -> /* не используется для нового заказа */ },
                                         onSaved = { navController.popBackStack() },
                                         onCancel = { navController.popBackStack() }
                                     )
@@ -584,7 +587,7 @@ class MainActivity : ComponentActivity() {
                                     OrderEditScreen(
                                         orderController = orderController,
                                         onAddItem = {
-                                            orderItemController.currentOrderId = orderController.currentOrder.value?.id ?: ""
+                                            orderItemController.currentOrderId = orderController.currentOrderWithItems.value?.id ?: ""
                                             orderItemController.startNewItem()
                                             navController.navigate("order_item_new")
                                         },

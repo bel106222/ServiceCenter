@@ -4,11 +4,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.ui.unit.dp
 import ru.bel.servicecenter.controllers.OrderItemController
 import ru.bel.servicecenter.models.Service
 import ru.bel.servicecenter.rules.ValidationRules
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OrderItemEditScreen(
@@ -26,7 +26,6 @@ fun OrderItemEditScreen(
     var quantityError by remember { mutableStateOf<String?>(null) }
     var costError by remember { mutableStateOf<String?>(null) }
 
-    // При изменении выбранной услуги или количества пересчитываем стоимость
     LaunchedEffect(selectedService, currentItem?.orderitem_quantity) {
         orderItemController.recalculateCost()
     }
@@ -44,7 +43,6 @@ fun OrderItemEditScreen(
         Text("Позиция заказа", style = MaterialTheme.typography.headlineSmall)
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Выпадающий список услуг
         ExposedDropdownMenuBox(
             expanded = serviceDropdownExpanded,
             onExpandedChange = { serviceDropdownExpanded = it }
@@ -55,7 +53,7 @@ fun OrderItemEditScreen(
                 readOnly = true,
                 label = { Text("Услуга") },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = serviceDropdownExpanded) },
-                modifier = Modifier.fillMaxWidth().menuAnchor(),
+                modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable),
                 enabled = !isSaving
             )
             ExposedDropdownMenu(
@@ -75,7 +73,6 @@ fun OrderItemEditScreen(
         }
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Количество
         OutlinedTextField(
             value = currentItem?.orderitem_quantity?.toString() ?: "1",
             onValueChange = { value ->
@@ -91,7 +88,6 @@ fun OrderItemEditScreen(
         )
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Стоимость (рассчитывается автоматически, но можно оставить редактируемой)
         OutlinedTextField(
             value = currentItem?.orderitem_cost?.toString() ?: "0",
             onValueChange = { value ->
@@ -107,7 +103,6 @@ fun OrderItemEditScreen(
         )
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Признак online
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(
                 checked = currentItem?.is_online ?: false,
@@ -118,7 +113,7 @@ fun OrderItemEditScreen(
         }
 
         Spacer(modifier = Modifier.height(24.dp))
-        Row(horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth()) {
+        Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
             if (isSaving) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(modifier = Modifier.size(20.dp))
@@ -126,16 +121,11 @@ fun OrderItemEditScreen(
                     Text("Сохранение...")
                 }
             } else {
-                Button(
-                    onClick = {
-                        isSaving = true
-                        orderItemController.saveItem(onSaved = {
-                            isSaving = false
-                            onSaved()   // вызываем внешний колбэк, закрывающий окно
-                        })
-                    },
-                    enabled = !isSaving
-                ) { Text("Сохранить") }
+                Button(onClick = {
+                    isSaving = true
+                    orderItemController.saveItem(onSaved = {})
+                }) { Text("Сохранить") }
+                Spacer(modifier = Modifier.width(16.dp))
                 Button(onClick = onCancel,
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
                 ) { Text("Отмена") }

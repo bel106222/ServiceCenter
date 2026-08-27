@@ -7,7 +7,8 @@ import java.util.UUID
 data class OrderItem(
     val id: String = UUID.randomUUID().toString(),
     val order_id: String,           // внешний ключ к Order
-    val service_id: String,         // оказанная услуга (Service)
+    val service_id: String,         // id оказанной услуги (Service)
+    val services: ServiceName? = null, // наименование оказанной услуги
     val user_id: String,            // инженер, выполнивший услугу
     val orderitem_quantity: Int = 1,// количество
     val orderitem_cost: Float = 0f, // стоимость позиции

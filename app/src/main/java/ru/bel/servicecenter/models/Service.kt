@@ -13,3 +13,7 @@ data class Service(
     val created_at: String = java.time.LocalDateTime.now().toString(),
     val deleted_at: String? = null
 )
+@Serializable
+data class ServiceName(
+    val service_name: String
+)

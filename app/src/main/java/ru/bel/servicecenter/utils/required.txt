@@ -1,0 +1,10 @@
+1. Список образов в эмуляторе:
+C:\Users\Admin\AppData\Local\Android\Sdk\emulator\emulator.exe -list-avds
+
+2. Холодный старт образа:
+C:\Users\Admin\AppData\Local\Android\Sdk\emulator\emulator.exe -avd Pixel_4 -no-snapshot-load
+
+3. API-запрос к Supabase, который поддерживает встраивание связанных записей через параметр select.
+Если таблица order_items имеет внешний ключ order_id, указывающий на orders.id,
+то можно одним запросом получить заказы вместе с их позициями, с наменованиеми из табицы services:
+GET /rest/v1/orders?select=*,order_items(*,services(service_name))

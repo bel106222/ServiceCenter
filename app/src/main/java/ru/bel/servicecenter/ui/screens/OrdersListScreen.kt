@@ -7,22 +7,21 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import ru.bel.servicecenter.controllers.OrderController
-import ru.bel.servicecenter.models.Order
+import ru.bel.servicecenter.models.OrderWithItems
 
+/**
+ * Экран списка заказов.
+ * Принимает готовый список OrderWithItems и отображает его.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OrdersListScreen(
-    orderController: OrderController,
-    onEditOrder: (Order) -> Unit,
+    orders: List<OrderWithItems>,
+    onEditOrder: (OrderWithItems) -> Unit,
+    onDeleteOrder: (OrderWithItems) -> Unit,
     onAddNewOrder: () -> Unit,
     onBack: () -> Unit
 ) {
-    val orders by orderController.orders.collectAsState()
-    val message by orderController.message.collectAsState()
-    var showMessage by remember { mutableStateOf(false) }
-
-    LaunchedEffect(message) { if (message != null) showMessage = true }
-
     Scaffold(
         topBar = {
             TopAppBar(
@@ -45,27 +44,14 @@ fun OrdersListScreen(
                         Text("Заказ № ${order.order_number}")
                         Text("Описание: ${order.order_description}")
                         Text("Сумма: ${order.order_sum}")
+                        Text("Позиций: ${order.order_items.size}")
                         Row {
                             TextButton(onClick = { onEditOrder(order) }) { Text("Изменить") }
-                            TextButton(onClick = { orderController.deleteOrder(order) }) { Text("Удалить") }
+                            TextButton(onClick = { onDeleteOrder(order) }) { Text("Удалить") }
                         }
                     }
                 }
             }
         }
-    }
-
-    if (showMessage) {
-        AlertDialog(
-            onDismissRequest = { showMessage = false },
-            title = { Text("Сообщение") },
-            text = { Text(message ?: "") },
-            confirmButton = {
-                TextButton(onClick = {
-                    showMessage = false
-                    orderController.clearMessage()
-                }) { Text("OK") }
-            }
-        )
     }
 }
