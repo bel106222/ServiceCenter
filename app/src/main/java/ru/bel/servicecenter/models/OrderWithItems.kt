@@ -1,7 +1,6 @@
 package ru.bel.servicecenter.models
 
 import kotlinx.serialization.Serializable
-
 @Serializable
 data class OrderWithItems(
     val id: String,
@@ -13,6 +12,11 @@ data class OrderWithItems(
     val is_time: Boolean = false,
     val created_at: String = "",
     val deleted_at: String? = null,
-    // Вложенный список позиций — имя поля совпадает с названием таблицы и связью
-    val order_items: List<OrderItem> = emptyList()
+    val order_items: List<OrderItem> = emptyList(),
+    val users: UserName? = null
+)
+
+@Serializable
+data class UserName(
+    val user_name: String
 )

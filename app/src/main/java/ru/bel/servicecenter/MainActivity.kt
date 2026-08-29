@@ -40,7 +40,6 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Scaffold
 import androidx.compose.ui.text.style.TextOverflow
 import ru.bel.servicecenter.controllers.StatusViewModel
-import ru.bel.servicecenter.controllers.UserManagementViewModel
 import ru.bel.servicecenter.ui.components.HistoryDialog
 import ru.bel.servicecenter.utils.DataValidator
 import ru.bel.servicecenter.ui.screens.FactoryState
@@ -145,7 +144,6 @@ class MainActivity : ComponentActivity() {
                             val authController = remember { AuthController() }
                             val adminController = remember { AdminController() }
                             val userController = remember { UserController() }
-                            val userManagementViewModel = remember { UserManagementViewModel() }
                             val clientController = remember { ClientController() }
                             val categoryController = remember { CategoryController() }
                             val priceController = remember { PriceController() }
@@ -155,24 +153,60 @@ class MainActivity : ComponentActivity() {
                             orderItemController.orderController = orderController
                             val loggedUser by authController.loggedUser.collectAsState()
 
+                            // Блок реагирует на изменение авторизованного пользователя.
+                            // Он выполняется сразу после входа или регистрации, а также при выходе.
                             LaunchedEffect(loggedUser) {
                                 loggedUser?.let { user ->
-                                    val roleName = authController.userRole.value
+                                    // Получаем роль из AuthController. Она была сохранена при входе/регистрации.
+                                    val role = authController.userRole.value ?: "user" // на случай, если роль ещё не определена
+
+                                    // Устанавливаем текущего пользователя и роль во все контроллеры, которым это нужно.
+                                    // Это позволяет избежать повторных запросов к БД для определения прав.
+
+                                    // --- Заказы ---
                                     orderController.currentAuthUser = user
-                                    Timber.d("MainActivity: orderController.currentAuthUser = ${user.user_name}")
-                                    when (roleName) {
+                                    orderController.currentUserRole = role
+
+                                    // --- Позиции заказа ---
+                                    orderItemController.currentAuthUser = user
+                                    // Если в OrderItemController есть поле currentUserRole, раскомментируйте:
+                                    // orderItemController.currentUserRole = role
+
+                                    // --- Пользователи ---
+                                    userController.currentAuthUser = user
+
+                                    // --- Клиенты ---
+                                    clientController.currentAuthUser = user
+
+                                    // --- Категории ---
+                                    categoryController.currentAuthUser = user
+
+                                    // --- Услуги ---
+                                    serviceController.currentAuthUser = user
+
+                                    // --- Цены ---
+                                    priceController.currentAuthUser = user
+
+                                    // --- Логируем для отладки ---
+                                    Timber.d("MainActivity: currentAuthUser = ${user.user_name}, роль = $role")
+
+                                    // В зависимости от роли и наличия привязки клиента переходим на нужный экран.
+                                    when (role) {
                                         "user" -> {
                                             if (user.client_id.isNullOrBlank()) {
+                                                // Пользователь ещё не привязан к клиенту – показываем предупреждение
                                                 navController.navigate("not_a_client") {
                                                     popUpTo("start") { inclusive = true }
                                                 }
                                             } else {
+                                                // Пользователь привязан – открываем дашборд
                                                 navController.navigate("dashboard") {
                                                     popUpTo("start") { inclusive = true }
                                                 }
                                             }
                                         }
                                         else -> {
+                                            // Администратор и инженер сразу попадают в дашборд
                                             navController.navigate("dashboard") {
                                                 popUpTo("start") { inclusive = true }
                                             }
@@ -235,6 +269,8 @@ class MainActivity : ComponentActivity() {
                                                             isOrdersLoading = true
                                                             coroutineScope.launch {
                                                                 try {
+                                                                    orderController.currentAuthUser = authController.loggedUser.value
+                                                                    orderController.currentUserRole = authController.userRole.value ?: "user"
                                                                     orderController.loadOrders()
                                                                 } catch (e: Exception) {
                                                                     LoggerService.log("Ошибка загрузки заказов: ${e.message}")
@@ -257,6 +293,8 @@ class MainActivity : ComponentActivity() {
                                                             isOrdersLoading = true
                                                             coroutineScope.launch {
                                                                 try {
+                                                                    orderController.currentAuthUser = authController.loggedUser.value
+                                                                    orderController.currentUserRole = authController.userRole.value ?: "user"
                                                                     orderController.loadOrders()
                                                                 } catch (e: Exception) {
                                                                     LoggerService.log("Ошибка загрузки заказов: ${e.message}")
@@ -281,6 +319,8 @@ class MainActivity : ComponentActivity() {
                                                             isOrdersLoading = true
                                                             coroutineScope.launch {
                                                                 try {
+                                                                    orderController.currentAuthUser = authController.loggedUser.value
+                                                                    orderController.currentUserRole = authController.userRole.value ?: "user"
                                                                     orderController.loadOrders()
                                                                 } catch (e: Exception) {
                                                                     LoggerService.log("Ошибка загрузки заказов: ${e.message}")
@@ -333,12 +373,12 @@ class MainActivity : ComponentActivity() {
                                 composable("users") {
                                     val currentUser by authController.loggedUser.collectAsState()
                                     LaunchedEffect(currentUser) {
-                                        userManagementViewModel.userController.currentAuthUser = currentUser
+                                        userController.currentAuthUser = currentUser
                                     }
                                     UsersListScreen(
-                                        viewModel = userManagementViewModel,
+                                        userController = userController,
                                         onEditUser = { user ->
-                                            userManagementViewModel.userController.setEditingUser(user)
+                                            userController.setEditingUser(user)
                                             navController.navigate("user_edit")
                                         },
                                         onBack = { navController.popBackStack() }
@@ -348,10 +388,10 @@ class MainActivity : ComponentActivity() {
                                 composable("user_edit") {
                                     val currentUser by authController.loggedUser.collectAsState()
                                     LaunchedEffect(currentUser) {
-                                        userManagementViewModel.userController.currentAuthUser = currentUser
+                                        userController.currentAuthUser = currentUser
                                     }
                                     UserEditScreen(
-                                        viewModel = userManagementViewModel,
+                                        userController = userController,
                                         onSaved = { navController.popBackStack() },
                                         onCancel = { navController.popBackStack() }
                                     )
@@ -525,28 +565,12 @@ class MainActivity : ComponentActivity() {
 
                                 composable("orders") {
                                     val ordersWithItems by orderController.ordersWithItems.collectAsState()
+
                                     OrdersListScreen(
                                         orders = ordersWithItems,
                                         onEditOrder = { order ->
-                                            if (!isOrderLoadingForEdit) {
-                                                isOrderLoadingForEdit = true
-                                                coroutineScope.launch {
-                                                    try {
-                                                        orderController.loadOrders() // загружаем свежие данные
-                                                        val freshOrder = orderController.ordersWithItems.value.find { it.id == order.id }
-                                                        if (freshOrder != null) {
-                                                            orderController.prepareForEdit(freshOrder)
-                                                            navController.navigate("order_edit")
-                                                        } else {
-                                                            LoggerService.log("Заказ не найден")
-                                                        }
-                                                    } catch (e: Exception) {
-                                                        LoggerService.log("Ошибка загрузки заказа: ${e.message}")
-                                                    } finally {
-                                                        isOrderLoadingForEdit = false
-                                                    }
-                                                }
-                                            }
+                                            orderController.prepareForEdit(order)
+                                            navController.navigate("order_edit")
                                         },
                                         onDeleteOrder = { order ->
                                             orderController.deleteOrder(order)
@@ -635,7 +659,17 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 composable("test") {
-                                    TestScreen(onBack = { navController.popBackStack() })
+//                                    val currentUser by authController.loggedUser.collectAsState()
+//                                    val ordersWithItems by orderController.ordersWithItems.collectAsState()
+//                                    LaunchedEffect(currentUser) {
+//                                        orderController.currentAuthUser = currentUser
+//                                        orderController.currentUserRole = authController.userRole.value ?: "user"
+//                                        orderController.loadOrders()
+//                                    }
+                                    TestScreen(
+                                        orderController = orderController,
+                                        onBack = { navController.popBackStack() }
+                                    )
                                 }
 
                             } // NavHost

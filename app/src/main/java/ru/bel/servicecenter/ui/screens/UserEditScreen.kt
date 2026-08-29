@@ -2,46 +2,54 @@ package ru.bel.servicecenter.ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.launch
 import ru.bel.servicecenter.controllers.UserController
-import ru.bel.servicecenter.controllers.UserManagementViewModel
+import ru.bel.servicecenter.models.Client
+import ru.bel.servicecenter.models.Role
+import ru.bel.servicecenter.repository.RepositoryProvider
 import ru.bel.servicecenter.rules.ValidationRules
+import ru.bel.servicecenter.utils.LoggerService
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UserEditScreen(
-    viewModel: UserManagementViewModel,
+    userController: UserController,
     onSaved: () -> Unit,
     onCancel: () -> Unit
 ) {
-    val userController = viewModel.userController
     val currentUser by userController.currentUser.collectAsState()
     val errors by userController.errors.collectAsState()
     val message by userController.message.collectAsState()
 
-    val roles by viewModel.roles.collectAsState()
-    val clients by viewModel.clients.collectAsState()
-
+    var roles by remember { mutableStateOf<List<Role>>(emptyList()) }
+    var clients by remember { mutableStateOf<List<Client>>(emptyList()) }
     var selectedRoleName by remember { mutableStateOf("") }
     var selectedClientName by remember { mutableStateOf("") }
     var roleDropdownExpanded by remember { mutableStateOf(false) }
     var clientDropdownExpanded by remember { mutableStateOf(false) }
-    var isSaving by remember { mutableStateOf(false) }
 
+    // Загружаем роли и клиентов для выпадающих списков
+    LaunchedEffect(Unit) {
+        try {
+            val roleNames = listOf("admin", "engineer", "user")
+            roles = roleNames.mapNotNull { RepositoryProvider.roleRepo.getRoleByName(it) }
+            clients = RepositoryProvider.clientRepo.getAllClients()
+        } catch (e: Exception) {
+            LoggerService.log("Ошибка загрузки справочников: ${e.message}")
+        }
+    }
+
+    // Устанавливаем названия при изменении currentUser или справочников
     LaunchedEffect(currentUser, roles, clients) {
         selectedRoleName = roles.find { it.id == currentUser.role_id }?.role_name ?: "Не выбрана"
         selectedClientName = clients.find { it.id == currentUser.client_id }?.client_title ?: "Не выбран"
     }
 
     LaunchedEffect(message) {
-        if (message != null) {
-            isSaving = false
-            if (message == "Пользователь создан" || message == "Профиль обновлён") {
-                onSaved()
-            }
+        if (message != null && (message == "Пользователь создан" || message == "Профиль обновлён")) {
+            onSaved()
         }
     }
 
@@ -55,8 +63,7 @@ fun UserEditScreen(
             label = { Text("Имя") },
             isError = errors["user_name"] != null,
             supportingText = { errors["user_name"]?.let { Text(it) } },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !isSaving
+            modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(8.dp))
 
@@ -66,8 +73,7 @@ fun UserEditScreen(
             label = { Text("Email") },
             isError = errors["user_email"] != null,
             supportingText = { errors["user_email"]?.let { Text(it) } },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !isSaving
+            modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(8.dp))
 
@@ -77,8 +83,7 @@ fun UserEditScreen(
             label = { Text("Телефон") },
             isError = errors["user_phone"] != null,
             supportingText = { errors["user_phone"]?.let { Text(it) } },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !isSaving
+            modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(8.dp))
 
@@ -88,11 +93,11 @@ fun UserEditScreen(
             label = { Text("Новый пароль (оставьте пустым, если не меняется)") },
             isError = errors["user_password"] != null,
             supportingText = { errors["user_password"]?.let { Text(it) } },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !isSaving
+            modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(16.dp))
 
+        // Выпадающий список ролей
         ExposedDropdownMenuBox(
             expanded = roleDropdownExpanded,
             onExpandedChange = { roleDropdownExpanded = it }
@@ -104,7 +109,7 @@ fun UserEditScreen(
                 label = { Text("Роль") },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = roleDropdownExpanded) },
                 modifier = Modifier.fillMaxWidth().menuAnchor(),
-                enabled = !isSaving
+                enabled = true
             )
             ExposedDropdownMenu(
                 expanded = roleDropdownExpanded,
@@ -124,6 +129,7 @@ fun UserEditScreen(
         }
         Spacer(modifier = Modifier.height(16.dp))
 
+        // Выпадающий список клиентов
         ExposedDropdownMenuBox(
             expanded = clientDropdownExpanded,
             onExpandedChange = { clientDropdownExpanded = it }
@@ -135,7 +141,7 @@ fun UserEditScreen(
                 label = { Text("Клиент") },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = clientDropdownExpanded) },
                 modifier = Modifier.fillMaxWidth().menuAnchor(),
-                enabled = !isSaving
+                enabled = true
             )
             ExposedDropdownMenu(
                 expanded = clientDropdownExpanded,
@@ -164,19 +170,10 @@ fun UserEditScreen(
 
         Spacer(modifier = Modifier.height(24.dp))
         Row(horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth()) {
-            if (isSaving) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Сохранение...")
-                }
-            } else {
-                Button(onClick = { isSaving = true; userController.saveUser() }) { Text("Сохранить") }
-                Button(
-                    onClick = onCancel,
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
-                ) { Text("Отмена") }
-            }
+            Button(onClick = { userController.saveUser() }) { Text("Сохранить") }
+            Button(onClick = onCancel,
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+            ) { Text("Отмена") }
         }
     }
 }

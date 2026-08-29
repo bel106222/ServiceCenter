@@ -192,7 +192,7 @@ class SupabaseRepository : ClientRepository, RoleRepository, UserRepository,
     override suspend fun getOrderById(orderId: String): Order? =
         get<Order>("orders", "select" to "*", "id" to "eq.$orderId").firstOrNull()
     override suspend fun getOrdersWithItems(): List<OrderWithItems> =
-        get<OrderWithItems>("orders", "select" to "*,order_items(*,services(service_name))")
+        get<OrderWithItems>("orders", "select" to "*,order_items(*,services(service_name)),users(user_name)")
 
     // ------------------- OrderItem -------------------
     override suspend fun createOrderItem(item: OrderItem) = post("order_items", item)

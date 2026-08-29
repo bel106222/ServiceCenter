@@ -37,6 +37,9 @@ fun CategoriesListScreen(
             }) { Text("+") }
         }
     ) { padding ->
+        LaunchedEffect(Unit) {
+            categoryController.loadCategories()
+        }
         LazyColumn(modifier = Modifier.padding(padding)) {
             items(categories) { category ->
                 Card(

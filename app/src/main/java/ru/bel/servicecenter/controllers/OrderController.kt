@@ -4,51 +4,34 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import ru.bel.servicecenter.models.Client
 import ru.bel.servicecenter.models.Order
 import ru.bel.servicecenter.models.OrderItem
 import ru.bel.servicecenter.models.OrderWithItems
 import ru.bel.servicecenter.models.User
-import ru.bel.servicecenter.models.Service
+import ru.bel.servicecenter.models.UserName
 import ru.bel.servicecenter.repository.RepositoryProvider
 import ru.bel.servicecenter.rules.ValidationRules
 import timber.log.Timber
 
 class OrderController : ViewModel() {
 
-    // Все заказы с позициями (основной список)
     private val _ordersWithItems = MutableStateFlow<List<OrderWithItems>>(emptyList())
     val ordersWithItems: StateFlow<List<OrderWithItems>> = _ordersWithItems
 
-    // Список услуг (для отображения названий)
-    private val _services = MutableStateFlow<List<Service>>(emptyList())
-    val services: StateFlow<List<Service>> = _services
-
-    // Список пользователей (для определения автора)
-    private val _users = MutableStateFlow<List<User>>(emptyList())
-    val users: StateFlow<List<User>> = _users
-
-    // Список клиентов (для генерации номера заказа)
-    private val _clients = MutableStateFlow<List<Client>>(emptyList())
-    val clients: StateFlow<List<Client>> = _clients
-
-    // Текущий редактируемый заказ с позициями
     private val _currentOrderWithItems = MutableStateFlow<OrderWithItems?>(null)
     val currentOrderWithItems: StateFlow<OrderWithItems?> = _currentOrderWithItems
 
-    // Имя автора заказа
     private val _authorName = MutableStateFlow("")
     val authorName: StateFlow<String> = _authorName
 
-    // Ошибки валидации
     private val _errors = MutableStateFlow<Map<String, String?>>(emptyMap())
     val errors: StateFlow<Map<String, String?>> = _errors
 
-    // Сообщение пользователю
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
 
     var currentAuthUser: User? = null
+    var currentUserRole: String? = null   // роль берётся из AuthController
 
     private var isNewOrder: Boolean = false
 
@@ -56,31 +39,26 @@ class OrderController : ViewModel() {
         private set
 
     /**
-     * Загружает все заказы с позициями, услуги, пользователей и клиентов.
-     * Вызывается при входе в раздел "Заказы".
+     * Загружает список заказов с позициями одним запросом.
+     * Роль берётся из currentUserRole (уже в памяти).
      */
     suspend fun loadOrders() {
         val authUser = currentAuthUser ?: return
-        val role = getRoleName(authUser.role_id)
+        val role = currentUserRole ?: "user"   // если роль не установлена, считаем user
         val allOrders = RepositoryProvider.orderRepo.getOrdersWithItems()
         _ordersWithItems.value = when (role) {
             "admin", "engineer" -> allOrders
             "user" -> allOrders.filter { it.user_id == authUser.id }
             else -> emptyList()
         }
-        _services.value = RepositoryProvider.serviceRepo.getAllServices()
-        _users.value = RepositoryProvider.userRepo.getAllUsers()
-        _clients.value = RepositoryProvider.clientRepo.getAllClients()
         isAdminOrEngineer = role == "admin" || role == "engineer"
     }
 
     /**
-     * Обновляет список заказов после изменения позиции.
-     * Используется из OrderItemController.
+     * Перезагружает список заказов (например, после сохранения позиции).
      */
     suspend fun refreshOrders() {
         loadOrders()
-        // Если открыт заказ, обновляем его в currentOrderWithItems
         val currentId = _currentOrderWithItems.value?.id
         if (currentId != null) {
             _currentOrderWithItems.value = _ordersWithItems.value.find { it.id == currentId }
@@ -88,36 +66,43 @@ class OrderController : ViewModel() {
     }
 
     /**
-     * Подготавливает контроллер для создания нового заказа.
+     * Подготавливает создание нового заказа.
+     * Для генерации номера загружает клиентов (единственный дополнительный запрос).
      */
     fun prepareForNewOrder() {
         val user = currentAuthUser ?: return
-        val clientTitle = _clients.value.find { it.id == user.client_id }?.client_title ?: "XXX"
-        val orderNumber = generateOrderNumber(clientTitle)
-        _currentOrderWithItems.value = OrderWithItems(
-            id = "",
-            order_number = orderNumber,
-            order_description = "",
-            user_id = user.id,
-            order_sum = 0f,
-            is_completed = false,
-            is_time = false,
-            created_at = "",
-            order_items = emptyList()
-        )
-        _authorName.value = user.user_name
-        isNewOrder = true
-        _errors.value = emptyMap()
-        _message.value = null
+        viewModelScope.launch {
+            val clients = RepositoryProvider.clientRepo.getAllClients()
+            val clientTitle = clients.find { it.id == user.client_id }?.client_title ?: "XXX"
+            val orderNumber = generateOrderNumber(clientTitle)
+
+            _currentOrderWithItems.value = OrderWithItems(
+                id = "",
+                order_number = orderNumber,
+                order_description = "",
+                user_id = user.id,
+                order_sum = 0f,
+                is_completed = false,
+                is_time = false,
+                created_at = "",
+                order_items = emptyList(),
+                users = UserName(user.user_name)
+            )
+            _authorName.value = user.user_name
+            isNewOrder = true
+            _errors.value = emptyMap()
+            _message.value = null
+        }
     }
 
     /**
-     * Подготавливает контроллер для редактирования существующего заказа.
+     * Подготавливает редактирование существующего заказа.
+     * Все данные уже есть в объекте, дополнительных запросов нет.
      */
     fun prepareForEdit(orderWithItems: OrderWithItems) {
         _currentOrderWithItems.value = orderWithItems
         isNewOrder = false
-        _authorName.value = _users.value.find { it.id == orderWithItems.user_id }?.user_name ?: "Неизвестный"
+        _authorName.value = orderWithItems.users?.user_name ?: "Неизвестный"
         _errors.value = emptyMap()
         _message.value = null
     }
@@ -145,7 +130,6 @@ class OrderController : ViewModel() {
             _errors.value = errs
             if (errs.any { it.value != null }) return@launch
 
-            // Преобразуем OrderWithItems в обычный Order для отправки
             val order = Order(
                 id = orderWithItems.id,
                 order_number = orderWithItems.order_number,
@@ -222,25 +206,16 @@ class OrderController : ViewModel() {
             try {
                 RepositoryProvider.orderItemRepo.deleteOrderItem(item)
                 _message.value = "Позиция удалена"
-                // Пересчитываем сумму заказа
                 updateOrderSum(item.order_id)
-                // Обновляем список заказов
                 loadOrders()
-                // Обновляем текущий заказ, если он открыт
-                val currentId = _currentOrderWithItems.value?.id
-                if (currentId == item.order_id) {
-                    _currentOrderWithItems.value = _ordersWithItems.value.find { it.id == item.order_id }
-                }
             } catch (e: Exception) {
                 _message.value = "Ошибка удаления позиции: ${e.message}"
-                Timber.e(e, "deleteOrderItem error")
             }
         }
     }
 
     /**
      * Пересчитывает сумму заказа на основе позиций и сохраняет её.
-     * Используется после добавления/удаления позиции.
      */
     suspend fun updateOrderSum(orderId: String) {
         val allOrders = RepositoryProvider.orderRepo.getOrdersWithItems()
@@ -258,7 +233,6 @@ class OrderController : ViewModel() {
             deleted_at = orderWithItems.deleted_at
         )
         RepositoryProvider.orderRepo.updateOrder(order)
-        // Обновляем список заказов и текущий заказ
         _ordersWithItems.value = _ordersWithItems.value.map {
             if (it.id == orderId) it.copy(order_sum = sum) else it
         }
@@ -271,23 +245,8 @@ class OrderController : ViewModel() {
         _message.value = null
     }
 
-    // ------------------- Вспомогательные методы -------------------
-
-    private suspend fun getRoleName(roleId: String): String? {
-        val admin = RepositoryProvider.roleRepo.getRoleByName("admin")
-        val eng = RepositoryProvider.roleRepo.getRoleByName("engineer")
-        val user = RepositoryProvider.roleRepo.getRoleByName("user")
-        return when (roleId) {
-            admin?.id -> "admin"
-            eng?.id -> "engineer"
-            user?.id -> "user"
-            else -> null
-        }
-    }
-
     private suspend fun canEditOrder(authUser: User, order: OrderWithItems): Boolean {
-        val role = getRoleName(authUser.role_id)
-        return when (role) {
+        return when (currentUserRole) {
             "admin", "engineer" -> true
             "user" -> order.user_id == authUser.id
             else -> false

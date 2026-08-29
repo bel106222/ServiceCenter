@@ -26,9 +26,9 @@ class CategoryController : ViewModel() {
 
     var currentAuthUser: User? = null
 
-    init {
-        loadCategories()
-    }
+//    init {
+//        loadCategories()
+//    }
 
     fun loadCategories() {
         viewModelScope.launch {

@@ -41,11 +41,11 @@ class UserController : ViewModel() {
     private val _clients = MutableStateFlow<List<Client>>(emptyList())
     val clients: StateFlow<List<Client>> = _clients
 
-    init {
-        loadUsers()
-        loadRoles()
-        loadClients()
-    }
+//    init {
+//        loadUsers()
+//        loadRoles()
+//        loadClients()
+//    }
 
     fun loadRoles() {
         viewModelScope.launch {

@@ -153,6 +153,7 @@ class OrderItemController : ViewModel() {
                 orderController?.updateOrderSum(item.order_id)
                 // Обновляем список позиций
                 loadItems(item.order_id)
+                orderController?.refreshOrders()
                 onSaved()   // ← закрываем окно
             } catch (e: Exception) {
                 _message.value = "Ошибка сохранения позиции: ${e.message}"
@@ -175,6 +176,8 @@ class OrderItemController : ViewModel() {
                 _message.value = "Позиция удалена"
                 loadItems(item.order_id)
                 orderController?.updateOrderSum(item.order_id)   // пересчитываем сумму заказа
+                RepositoryProvider.orderItemRepo.deleteOrderItem(item)
+                orderController?.refreshOrders()
                 onDeleted()
             } catch (e: Exception) {
                 _message.value = "Ошибка удаления позиции: ${e.message}"

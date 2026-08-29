@@ -39,6 +39,9 @@ fun ClientsListScreen(
             }) { Text("+") }
         }
     ) { padding ->
+        LaunchedEffect(Unit) {
+            clientController.loadClients()
+        }
         LazyColumn(modifier = Modifier.padding(padding)) {
             items(clients) { client ->
                 Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
