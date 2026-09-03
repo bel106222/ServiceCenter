@@ -130,6 +130,7 @@ class OrderController : ViewModel() {
             _errors.value = errs
             if (errs.any { it.value != null }) return@launch
 
+            // Конвертируем OrderWithItems в Order (без позиций, они сохраняются отдельно)
             val order = Order(
                 id = orderWithItems.id,
                 order_number = orderWithItems.order_number,
@@ -146,11 +147,37 @@ class OrderController : ViewModel() {
                 if (isNewOrder) {
                     RepositoryProvider.orderRepo.createOrder(order)
                     _message.value = "Заказ создан"
+                    loadOrders()   // для нового заказа нужно получить полный список
                 } else {
                     RepositoryProvider.orderRepo.updateOrder(order)
                     _message.value = "Заказ обновлён"
+
+                    // Локально обновляем список и текущий заказ, чтобы экран сразу показал изменения
+                    _ordersWithItems.value = _ordersWithItems.value.map {
+                        if (it.id == order.id) {
+                            it.copy(
+                                order_description = order.order_description,
+                                order_sum = order.order_sum,
+                                is_completed = order.is_completed,
+                                is_time = order.is_time,
+                                users = it.users,
+                                order_items = it.order_items
+                            )
+                        } else it
+                    }
+                    _currentOrderWithItems.value = _currentOrderWithItems.value?.let {
+                        if (it.id == order.id) {
+                            it.copy(
+                                order_description = order.order_description,
+                                order_sum = order.order_sum,
+                                is_completed = order.is_completed,
+                                is_time = order.is_time,
+                                users = it.users,
+                                order_items = it.order_items
+                            )
+                        } else it
+                    }
                 }
-                loadOrders()
             } catch (e: Exception) {
                 _message.value = "Ошибка сохранения: ${e.message}"
                 Timber.e(e, "saveOrder error")
@@ -203,14 +230,63 @@ class OrderController : ViewModel() {
                 _message.value = "Недостаточно прав"
                 return@launch
             }
-            try {
-                RepositoryProvider.orderItemRepo.deleteOrderItem(item)
-                _message.value = "Позиция удалена"
-                updateOrderSum(item.order_id)
-                loadOrders()
-            } catch (e: Exception) {
-                _message.value = "Ошибка удаления позиции: ${e.message}"
+
+            val current = _currentOrderWithItems.value ?: return@launch
+            if (current.id != item.order_id) return@launch
+
+            // Вычисляем новые позиции и сумму после удаления
+            val newItems = current.order_items.filterNot { it.id == item.id }
+            val newSum = newItems.sumOf { it.orderitem_cost.toDouble() }.toFloat()
+
+            // Оптимистично обновляем UI
+            _currentOrderWithItems.value = current.copy(order_items = newItems, order_sum = newSum)
+            _ordersWithItems.value = _ordersWithItems.value.map {
+                if (it.id == current.id) it.copy(order_items = newItems, order_sum = newSum) else it
             }
+
+            try {
+                // Удаляем позицию из БД
+                RepositoryProvider.orderItemRepo.deleteOrderItem(item)
+
+                // Обновляем заказ в БД с новой суммой
+                val updatedOrder = Order(
+                    id = current.id,
+                    order_number = current.order_number,
+                    order_description = current.order_description,
+                    user_id = current.user_id,
+                    order_sum = newSum,
+                    is_completed = current.is_completed,
+                    is_time = current.is_time,
+                    created_at = current.created_at,
+                    deleted_at = current.deleted_at
+                )
+                RepositoryProvider.orderRepo.updateOrder(updatedOrder)
+
+                _message.value = "Позиция удалена"
+            } catch (e: Exception) {
+                // Откатываем изменения в случае ошибки
+                _currentOrderWithItems.value = current
+                _ordersWithItems.value = _ordersWithItems.value.map {
+                    if (it.id == current.id) it.copy(order_items = current.order_items, order_sum = current.order_sum) else it
+                }
+                _message.value = "Ошибка удаления позиции: ${e.message}"
+                Timber.e(e, "deleteOrderItem error")
+            }
+        }
+    }
+
+    /**
+     * Локально обновляет позиции текущего заказа и сумму.
+     * Используется после сохранения или удаления позиции, чтобы экран обновился мгновенно.
+     */
+    fun updateCurrentOrderLocally(orderId: String, newItems: List<OrderItem>) {
+        val current = _currentOrderWithItems.value ?: return
+        if (current.id == orderId) {
+            val newSum = newItems.sumOf { it.orderitem_cost.toDouble() }.toFloat()
+            _currentOrderWithItems.value = current.copy(order_items = newItems, order_sum = newSum)
+        }
+        _ordersWithItems.value = _ordersWithItems.value.map {
+            if (it.id == orderId) it.copy(order_items = newItems, order_sum = newItems.sumOf { item -> item.orderitem_cost.toDouble() }.toFloat()) else it
         }
     }
 
@@ -233,6 +309,7 @@ class OrderController : ViewModel() {
             deleted_at = orderWithItems.deleted_at
         )
         RepositoryProvider.orderRepo.updateOrder(order)
+        // Обновляем локальные данные
         _ordersWithItems.value = _ordersWithItems.value.map {
             if (it.id == orderId) it.copy(order_sum = sum) else it
         }

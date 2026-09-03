@@ -130,17 +130,15 @@ class OrderItemController : ViewModel() {
     }
 
     fun saveItem(onSaved: () -> Unit) {
-        if (isSaving) return   // уже идёт сохранение
         val item = _currentItem.value ?: return
         val authUser = currentAuthUser ?: run { _message.value = "Не выполнен вход"; return }
 
         viewModelScope.launch {
-            isSaving = true
+            if (!canModify(authUser)) {
+                _message.value = "Недостаточно прав для изменения позиций заказа"
+                return@launch
+            }
             try {
-                if (!canModify(authUser)) {
-                    _message.value = "Недостаточно прав для изменения позиций заказа"
-                    return@launch
-                }
                 val isNew = item.id.isEmpty() || _items.value.none { it.id == item.id }
                 if (isNew) {
                     RepositoryProvider.orderItemRepo.createOrderItem(item)
@@ -149,17 +147,15 @@ class OrderItemController : ViewModel() {
                     RepositoryProvider.orderItemRepo.updateOrderItem(item)
                     _message.value = "Позиция обновлена"
                 }
-                // Пересчитываем сумму заказа
-                orderController?.updateOrderSum(item.order_id)
-                // Обновляем список позиций
-                loadItems(item.order_id)
-                orderController?.refreshOrders()
-                onSaved()   // ← закрываем окно
+
+                // Загружаем актуальный список позиций для этого заказа
+                val updatedItems = RepositoryProvider.orderItemRepo.getOrderItemsByOrderId(item.order_id)
+                // Локально обновляем текущий заказ в OrderController
+                orderController?.updateCurrentOrderLocally(item.order_id, updatedItems)
+
+                onSaved()
             } catch (e: Exception) {
                 _message.value = "Ошибка сохранения позиции: ${e.message}"
-                Timber.e(e, "saveItem error")
-            } finally {
-                isSaving = false
             }
         }
     }
@@ -173,11 +169,10 @@ class OrderItemController : ViewModel() {
             }
             try {
                 RepositoryProvider.orderItemRepo.deleteOrderItem(item)
+                // Получаем актуальный список позиций и обновляем текущий заказ
+                val updatedItems = RepositoryProvider.orderItemRepo.getOrderItemsByOrderId(item.order_id)
+                orderController?.updateCurrentOrderLocally(item.order_id, updatedItems)
                 _message.value = "Позиция удалена"
-                loadItems(item.order_id)
-                orderController?.updateOrderSum(item.order_id)   // пересчитываем сумму заказа
-                RepositoryProvider.orderItemRepo.deleteOrderItem(item)
-                orderController?.refreshOrders()
                 onDeleted()
             } catch (e: Exception) {
                 _message.value = "Ошибка удаления позиции: ${e.message}"

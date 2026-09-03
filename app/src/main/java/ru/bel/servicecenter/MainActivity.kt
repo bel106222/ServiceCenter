@@ -596,7 +596,7 @@ class MainActivity : ComponentActivity() {
                                             orderItemController.startNewItem()
                                             navController.navigate("order_item_new")
                                         },
-                                        onEditItem = { item -> /* не используется для нового заказа */ },
+                                        onEditItem = { item -> },
                                         onSaved = { navController.popBackStack() },
                                         onCancel = { navController.popBackStack() }
                                     )

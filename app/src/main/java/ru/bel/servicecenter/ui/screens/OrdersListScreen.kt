@@ -35,16 +35,23 @@ fun OrdersListScreen(
     ) { padding ->
         LazyColumn(modifier = Modifier.padding(padding)) {
             items(orders) { order ->
+                // Определяем цвет фона карточки в зависимости от завершённости
+                val cardColor = if (!order.is_completed) {
+                    MaterialTheme.colorScheme.errorContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant
+                }
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    colors = CardDefaults.cardColors(containerColor = cardColor)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text("Заказ № ${order.order_number}")
+                        Text("Заказ № ${order.order_number} от ${order.created_at.take(19).replace("T", " ")}" )
                         Text("Описание: ${order.order_description}")
                         Text("Сумма: ${order.order_sum}")
-                        Text("Позиций: ${order.order_items.size}")
+                        //Text(if (order.is_completed) "Статус: Завершён" else "Статус: Требует выполнения")
                         Row {
                             TextButton(onClick = { onEditOrder(order) }) { Text("Изменить") }
                             TextButton(onClick = { onDeleteOrder(order) }) { Text("Удалить") }
