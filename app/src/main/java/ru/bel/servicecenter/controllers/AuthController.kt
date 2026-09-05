@@ -37,17 +37,18 @@ class AuthController : ViewModel() {
             try {
                 val user = RepositoryProvider.userRepo.getUserByEmail(email)
                 if (user != null && BCrypt.checkpw(password, user.user_password)) {
+                    // Сначала определяем роль
+                    val role = getRoleName(user.role_id)
+                    // Затем обновляем состояние
+                    _userRole.value = role
                     _loggedUser.value = user
-                    // Определяем и сохраняем роль пользователя
-                    _userRole.value = getRoleName(user.role_id)
                     _error.value = null
-                    Timber.i("Успешный вход: ${user.user_email}, роль: ${_userRole.value}")
+                    Timber.i("Успешный вход: ${user.user_email}, роль: $role")
                 } else {
                     _error.value = "Неверный email или пароль"
                 }
             } catch (e: Exception) {
                 _error.value = "Ошибка входа: ${e.message}"
-                Timber.e(e, "Ошибка входа")
             }
         }
     }
@@ -104,6 +105,10 @@ class AuthController : ViewModel() {
         _loggedUser.value = null
         _userRole.value = null
         Timber.i("Пользователь вышел из системы")
+    }
+
+    fun updateLoggedUser(user: User) {
+        _loggedUser.value = user
     }
 
     /**

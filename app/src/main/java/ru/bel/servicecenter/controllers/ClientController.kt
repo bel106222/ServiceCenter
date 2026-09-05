@@ -31,10 +31,6 @@ class ClientController : ViewModel() {
 
     var currentAuthUser: User? = null
 
-//    init {
-//        loadClients()
-//    }
-
     fun loadClients() {
         viewModelScope.launch {
             try {

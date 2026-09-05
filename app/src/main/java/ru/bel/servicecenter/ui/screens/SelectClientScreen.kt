@@ -8,6 +8,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import ru.bel.servicecenter.controllers.AuthController
 import ru.bel.servicecenter.models.Client
 import ru.bel.servicecenter.models.User
 import ru.bel.servicecenter.repository.RepositoryProvider
@@ -16,6 +17,7 @@ import ru.bel.servicecenter.utils.LoggerService
 @Composable
 fun SelectClientScreen(
     currentUser: User,
+    authController: AuthController,
     onClientBound: () -> Unit
 ) {
     var clients by remember { mutableStateOf<List<Client>>(emptyList()) }
@@ -35,11 +37,15 @@ fun SelectClientScreen(
             defaultTitle = currentUser.user_name,
             onClientCreated = { newClient ->
                 coroutineScope.launch {
-                    // Привязываем клиента напрямую через репозиторий
-                    val updatedUser = currentUser.copy(client_id = newClient.id)
-                    RepositoryProvider.userRepo.updateUser(updatedUser)
-                    LoggerService.log("Пользователь привязан к новому клиенту: ${newClient.client_title}")
-                    onClientBound()
+                    try {
+                        val updatedUser = currentUser.copy(client_id = newClient.id)
+                        RepositoryProvider.userRepo.updateUser(updatedUser)
+                        authController.updateLoggedUser(updatedUser)   // обновляем текущего пользователя
+                        LoggerService.log("Пользователь привязан к клиенту: ${newClient.client_title}")
+                        onClientBound()
+                    } catch (e: Exception) {
+                        LoggerService.log("Ошибка привязки клиента: ${e.message}")
+                    }
                 }
             },
             onCancel = { showCreateClient = false }

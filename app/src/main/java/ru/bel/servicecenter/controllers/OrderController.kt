@@ -11,7 +11,10 @@ import ru.bel.servicecenter.models.User
 import ru.bel.servicecenter.models.UserName
 import ru.bel.servicecenter.repository.RepositoryProvider
 import ru.bel.servicecenter.rules.ValidationRules
+import ru.bel.servicecenter.utils.LoggerService
+import java.util.UUID
 import timber.log.Timber
+import java.time.LocalDateTime
 
 class OrderController : ViewModel() {
 
@@ -44,13 +47,23 @@ class OrderController : ViewModel() {
      */
     suspend fun loadOrders() {
         val authUser = currentAuthUser ?: return
-        val role = currentUserRole ?: "user"   // если роль не установлена, считаем user
+        val role = currentUserRole ?: "user"
         val allOrders = RepositoryProvider.orderRepo.getOrdersWithItems()
-        _ordersWithItems.value = when (role) {
+        val filtered = when (role) {
             "admin", "engineer" -> allOrders
             "user" -> allOrders.filter { it.user_id == authUser.id }
             else -> emptyList()
         }
+
+        // Сортировка:
+        // 1. Незавершённые (is_completed=false) — по возрастанию created_at (старые сверху)
+        // 2. Завершённые (is_completed=true) — по убыванию created_at (свежие сверху)
+        val sorted = filtered.sortedWith(
+            compareByDescending<OrderWithItems> { it.is_completed }          // незавершённые первыми
+                .thenBy { if (!it.is_completed) it.created_at else "" }     // для незавершённых — по возрастанию
+                .thenByDescending { if (it.is_completed) it.created_at else "" } // для завершённых — по убыванию
+        )
+        _ordersWithItems.value = sorted
         isAdminOrEngineer = role == "admin" || role == "engineer"
     }
 
@@ -77,14 +90,14 @@ class OrderController : ViewModel() {
             val orderNumber = generateOrderNumber(clientTitle)
 
             _currentOrderWithItems.value = OrderWithItems(
-                id = "",
+                id = UUID.randomUUID().toString(),
                 order_number = orderNumber,
                 order_description = "",
                 user_id = user.id,
                 order_sum = 0f,
                 is_completed = false,
                 is_time = false,
-                created_at = "",
+                created_at = LocalDateTime.now().toString(),
                 order_items = emptyList(),
                 users = UserName(user.user_name)
             )
@@ -130,7 +143,6 @@ class OrderController : ViewModel() {
             _errors.value = errs
             if (errs.any { it.value != null }) return@launch
 
-            // Конвертируем OrderWithItems в Order (без позиций, они сохраняются отдельно)
             val order = Order(
                 id = orderWithItems.id,
                 order_number = orderWithItems.order_number,
@@ -143,42 +155,30 @@ class OrderController : ViewModel() {
                 deleted_at = orderWithItems.deleted_at
             )
 
+            LoggerService.log("Сохраняем заказ: id=${order.id}, номер=${order.order_number}, описание=${order.order_description}")
             try {
                 if (isNewOrder) {
                     RepositoryProvider.orderRepo.createOrder(order)
+                    LoggerService.log("Заказ создан успешно")
                     _message.value = "Заказ создан"
-                    loadOrders()   // для нового заказа нужно получить полный список
+                    loadOrders()
                 } else {
                     RepositoryProvider.orderRepo.updateOrder(order)
+                    LoggerService.log("Заказ обновлён успешно")
                     _message.value = "Заказ обновлён"
-
-                    // Локально обновляем список и текущий заказ, чтобы экран сразу показал изменения
                     _ordersWithItems.value = _ordersWithItems.value.map {
                         if (it.id == order.id) {
                             it.copy(
                                 order_description = order.order_description,
                                 order_sum = order.order_sum,
                                 is_completed = order.is_completed,
-                                is_time = order.is_time,
-                                users = it.users,
-                                order_items = it.order_items
-                            )
-                        } else it
-                    }
-                    _currentOrderWithItems.value = _currentOrderWithItems.value?.let {
-                        if (it.id == order.id) {
-                            it.copy(
-                                order_description = order.order_description,
-                                order_sum = order.order_sum,
-                                is_completed = order.is_completed,
-                                is_time = order.is_time,
-                                users = it.users,
-                                order_items = it.order_items
+                                is_time = order.is_time
                             )
                         } else it
                     }
                 }
             } catch (e: Exception) {
+                LoggerService.log("Ошибка сохранения заказа: ${e.message}")
                 _message.value = "Ошибка сохранения: ${e.message}"
                 Timber.e(e, "saveOrder error")
             }

@@ -18,7 +18,7 @@ class SupabaseRepository : ClientRepository, RoleRepository, UserRepository,
     private val json = Json {
         ignoreUnknownKeys = true
         isLenient = true
-        encodeDefaults = true    // было false
+        encodeDefaults = false
     }
 
     private val baseUrl = BuildConfig.SUPABASE_URL + "/rest/v1"
@@ -75,6 +75,7 @@ class SupabaseRepository : ClientRepository, RoleRepository, UserRepository,
     // POST – создание, возвращаем переданный объект (ответ не читаем)
     private suspend inline fun <reified T> post(table: String, body: T): T {
         val jsonBody = json.encodeToString(body)
+
         sendRequest("POST", table, jsonBody)
         return body
     }

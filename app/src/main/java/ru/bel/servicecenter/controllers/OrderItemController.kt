@@ -9,6 +9,7 @@ import ru.bel.servicecenter.models.Service
 import ru.bel.servicecenter.models.User
 import ru.bel.servicecenter.repository.RepositoryProvider
 import timber.log.Timber
+import java.util.UUID
 
 class OrderItemController : ViewModel() {
 
@@ -72,6 +73,7 @@ class OrderItemController : ViewModel() {
     fun startNewItem() {
         val user = currentAuthUser ?: return
         _currentItem.value = OrderItem(
+            id = UUID.randomUUID().toString(),
             order_id = currentOrderId,
             service_id = "",
             user_id = user.id,
