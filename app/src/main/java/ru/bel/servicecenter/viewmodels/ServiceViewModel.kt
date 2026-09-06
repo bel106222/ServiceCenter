@@ -1,4 +1,5 @@
-package ru.bel.servicecenter.controllers
+package ru.bel.servicecenter.viewmodels
+
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -9,54 +10,78 @@ import ru.bel.servicecenter.models.Service
 import ru.bel.servicecenter.models.User
 import ru.bel.servicecenter.repository.RepositoryProvider
 import ru.bel.servicecenter.rules.ValidationRules
+import ru.bel.servicecenter.utils.LoggerService
+import ru.bel.servicecenter.utils.RoleCache
 import timber.log.Timber
 
-class ServiceController : ViewModel() {
+/**
+ * ViewModel для управления услугами.
+ * Загружает категории, услуги выбранной категории, выполняет CRUD.
+ */
+class ServiceViewModel : ViewModel() {
 
+    // Список всех категорий
     private val _categories = MutableStateFlow<List<Category>>(emptyList())
     val categories: StateFlow<List<Category>> = _categories
 
+    // Услуги выбранной категории
     private val _services = MutableStateFlow<List<Service>>(emptyList())
     val services: StateFlow<List<Service>> = _services
 
+    // Текущая редактируемая услуга
     private val _currentService = MutableStateFlow<Service?>(null)
     val currentService: StateFlow<Service?> = _currentService
 
+    // Ошибки валидации
     private val _errors = MutableStateFlow<Map<String, String?>>(emptyMap())
     val errors: StateFlow<Map<String, String?>> = _errors
 
+    // Сообщение пользователю
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
 
+    // Флаг загрузки (для индикатора)
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
 
     var currentAuthUser: User? = null
 
+    /**
+     * Загружает категории.
+     */
     fun loadCategories() {
         viewModelScope.launch {
             try {
                 _categories.value = RepositoryProvider.categoryRepo.getAllCategories()
             } catch (e: Exception) {
                 _message.value = "Ошибка загрузки категорий: ${e.message}"
+                Timber.e(e, "Ошибка загрузки категорий")
             }
         }
     }
 
+    /**
+     * Загружает услуги для выбранной категории.
+     */
     fun loadServices(categoryId: String) {
         viewModelScope.launch {
             _isLoading.value = true
-            _services.value = emptyList()
+            _services.value = emptyList() // очищаем, чтобы не показывать старые данные
             try {
                 _services.value = RepositoryProvider.serviceRepo.getServicesByCategoryId(categoryId)
             } catch (e: Exception) {
                 _message.value = "Ошибка загрузки услуг: ${e.message}"
+                Timber.e(e, "Ошибка загрузки услуг")
             } finally {
                 _isLoading.value = false
             }
         }
     }
 
+    /**
+     * Подготавливает экран для создания или редактирования услуги.
+     * Если услуга null — создаётся новый объект.
+     */
     fun startEditing(service: Service?) {
         _currentService.value = service ?: Service(
             service_name = "",
@@ -67,24 +92,20 @@ class ServiceController : ViewModel() {
         _errors.value = emptyMap()
     }
 
-    fun updateField(field: String, value: String) {
-        val service = _currentService.value ?: return
-        _currentService.value = when (field) {
-            "name" -> service.copy(service_name = value)
-            "description" -> service.copy(service_description = value)
-            "category_id" -> service.copy(category_id = value)
-            "is_fixprice" -> service.copy(is_fixprice = value.toBoolean())
-            else -> service
-        }
-    }
-
+    /**
+     * Сохраняет услугу (создание или обновление).
+     */
     fun saveService() {
         val service = _currentService.value ?: return
-        val authUser = currentAuthUser
+        val authUser = currentAuthUser ?: run {
+            _message.value = "Не выполнен вход"
+            return
+        }
 
         viewModelScope.launch {
-            if (authUser == null || !canModify(authUser)) {
-                _message.value = "Недостаточно прав"; return@launch
+            if (!canModify(authUser)) {
+                _message.value = "Недостаточно прав"
+                return@launch
             }
 
             val errs = mutableMapOf<String, String?>()
@@ -97,41 +118,72 @@ class ServiceController : ViewModel() {
                 if (service.id.isEmpty() || _services.value.none { it.id == service.id }) {
                     RepositoryProvider.serviceRepo.createService(service)
                     _message.value = "Услуга создана"
+                    LoggerService.log("Услуга создана: ${service.service_name}")
                 } else {
                     RepositoryProvider.serviceRepo.updateService(service)
                     _message.value = "Услуга обновлена"
+                    LoggerService.log("Услуга обновлена: ${service.service_name}")
                 }
-                // Обновляем список услуг
+                // Обновляем список услуг текущей категории
                 loadServices(service.category_id)
             } catch (e: Exception) {
                 _message.value = "Ошибка сохранения: ${e.message}"
+                Timber.e(e, "Ошибка сохранения услуги")
             }
         }
     }
 
+    /**
+     * Удаляет услугу.
+     */
     fun deleteService(service: Service) {
-        val authUser = currentAuthUser
+        val authUser = currentAuthUser ?: run {
+            _message.value = "Не выполнен вход"
+            return
+        }
         viewModelScope.launch {
-            if (authUser == null || !canModify(authUser)) {
-                _message.value = "Недостаточно прав"; return@launch
+            if (!canModify(authUser)) {
+                _message.value = "Недостаточно прав"
+                return@launch
             }
             try {
                 RepositoryProvider.serviceRepo.deleteService(service)
                 _message.value = "Услуга удалена"
+                LoggerService.log("Услуга удалена: ${service.service_name}")
                 loadServices(service.category_id)
             } catch (e: Exception) {
                 _message.value = "Ошибка удаления: ${e.message}"
+                Timber.e(e, "Ошибка удаления услуги")
             }
         }
     }
 
+    /**
+     * Обновляет отдельное поле текущей услуги.
+     */
+    fun updateField(field: String, value: String) {
+        val service = _currentService.value ?: return
+        _currentService.value = when (field) {
+            "name" -> service.copy(service_name = value)
+            "description" -> service.copy(service_description = value)
+            "category_id" -> service.copy(category_id = value)
+            "is_fixprice" -> service.copy(is_fixprice = value.toBoolean())
+            else -> service
+        }
+    }
+
+    /**
+     * Очищает сообщение.
+     */
     fun clearMessage() {
         _message.value = null
     }
 
+    /**
+     * Проверяет права на изменение услуг.
+     */
     private suspend fun canModify(user: User): Boolean {
-        val admin = RepositoryProvider.roleRepo.getRoleByName("admin")
-        val eng = RepositoryProvider.roleRepo.getRoleByName("engineer")
-        return user.role_id == admin?.id || user.role_id == eng?.id
+        val role = RoleCache.get(user.role_id) ?: return false
+        return role == "admin" || role == "engineer"
     }
 }

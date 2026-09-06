@@ -8,11 +8,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import ru.bel.servicecenter.controllers.StatusViewModel
+import ru.bel.servicecenter.viewmodels.StatusViewModel
 
-/**
- * Только строка состояния. При нажатии вызывает onShowHistory.
- */
 @Composable
 fun StatusBar(
     viewModel: StatusViewModel,

@@ -7,22 +7,22 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import ru.bel.servicecenter.controllers.ClientController
 import ru.bel.servicecenter.models.Client
+import ru.bel.servicecenter.viewmodels.ClientViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ClientsListScreen(
-    clientController: ClientController,
+    clientViewModel: ClientViewModel,
     onEditClient: (Client) -> Unit,
     onBack: () -> Unit
 ) {
-    val clients by clientController.clients.collectAsState()
-    val message by clientController.message.collectAsState()
+    val clients by clientViewModel.clients.collectAsState()
+    val message by clientViewModel.message.collectAsState()
     var showMessage by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        clientController.loadClients()
+        clientViewModel.loadClients()
     }
     LaunchedEffect(message) { if (message != null) showMessage = true }
 
@@ -35,9 +35,9 @@ fun ClientsListScreen(
         },
         floatingActionButton = {
             FloatingActionButton(onClick = {
-                clientController.clearMessage()
-                clientController.initNewClient()
-                onEditClient(clientController.currentClient.value)
+                clientViewModel.clearMessage()
+                clientViewModel.initNewClient()
+                onEditClient(clientViewModel.currentClient.value)
             }) { Text("+") }
         }
     ) { padding ->
@@ -53,11 +53,11 @@ fun ClientsListScreen(
                         Text(client.client_address)
                         Row {
                             TextButton(onClick = {
-                                clientController.clearMessage()
-                                clientController.setEditingClient(client)
+                                clientViewModel.clearMessage()
+                                clientViewModel.setEditingClient(client)
                                 onEditClient(client)
                             }) { Text("Изменить") }
-                            TextButton(onClick = { clientController.deleteClient(client) }) { Text("Удалить") }
+                            TextButton(onClick = { clientViewModel.deleteClient(client) }) { Text("Удалить") }
                         }
                     }
                 }
@@ -73,7 +73,7 @@ fun ClientsListScreen(
             confirmButton = {
                 TextButton(onClick = {
                     showMessage = false
-                    clientController.clearMessage()
+                    clientViewModel.clearMessage()
                 }) { Text("OK") }
             }
         )

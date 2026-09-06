@@ -3,22 +3,21 @@ package ru.bel.servicecenter.ui.navigation
 import androidx.navigation.NavController
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
-import ru.bel.servicecenter.controllers.AuthController
 import ru.bel.servicecenter.ui.auth.LoginScreen
 import ru.bel.servicecenter.ui.auth.RegisterScreen
+import ru.bel.servicecenter.viewmodels.AuthViewModel
 
 fun NavGraphBuilder.authGraph(
     navController: NavController,
-    authController: AuthController
+    authViewModel: AuthViewModel
 ) {
     composable("start") {
-        LoginScreen(authController = authController)
+        LoginScreen(authViewModel = authViewModel)
     }
     composable("login") {
-        LoginScreen(authController = authController)
+        LoginScreen(authViewModel = authViewModel)
     }
     composable("register") {
-        RegisterScreen(authController = authController)
+        RegisterScreen(authViewModel = authViewModel)
     }
-    // Здесь позже добавим not_a_client и select_client
 }

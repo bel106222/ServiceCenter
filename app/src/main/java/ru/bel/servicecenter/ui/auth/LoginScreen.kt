@@ -8,16 +8,15 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
-import ru.bel.servicecenter.controllers.AuthController
+import ru.bel.servicecenter.viewmodels.AuthViewModel
 
 @Composable
 fun LoginScreen(
-    authController: AuthController = viewModel()
+    authViewModel: AuthViewModel
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    val authError by authController.error.collectAsState()
+    val authError by authViewModel.error.collectAsState()
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
 
@@ -50,7 +49,7 @@ fun LoginScreen(
             onClick = {
                 focusManager.clearFocus()
                 keyboardController?.hide()
-                authController.login(email, password)
+                authViewModel.login(email, password)
             },
             modifier = Modifier.fillMaxWidth()
         ) {

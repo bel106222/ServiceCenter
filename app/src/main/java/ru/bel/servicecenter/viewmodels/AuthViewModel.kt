@@ -1,4 +1,5 @@
-package ru.bel.servicecenter.controllers
+package ru.bel.servicecenter.viewmodels
+
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -7,14 +8,16 @@ import kotlinx.coroutines.launch
 import org.mindrot.jbcrypt.BCrypt
 import ru.bel.servicecenter.models.User
 import ru.bel.servicecenter.repository.RepositoryProvider
+import ru.bel.servicecenter.utils.LoggerService
+import ru.bel.servicecenter.utils.RoleCache
 import timber.log.Timber
 
 /**
- * Контроллер аутентификации.
+ * ViewModel для аутентификации.
  * Хранит текущего авторизованного пользователя и его роль.
  * Выполняет вход, регистрацию и выход.
  */
-class AuthController : ViewModel() {
+class AuthViewModel : ViewModel() {
 
     // Текущий авторизованный пользователь (null – не вошёл)
     private val _loggedUser = MutableStateFlow<User?>(null)
@@ -30,32 +33,33 @@ class AuthController : ViewModel() {
 
     /**
      * Попытка входа по email и паролю.
-     * При успехе сохраняет пользователя и его роль.
+     * При успехе сохраняет пользователя и его роль (из глобального кэша).
      */
     fun login(email: String, password: String) {
         viewModelScope.launch {
             try {
                 val user = RepositoryProvider.userRepo.getUserByEmail(email)
                 if (user != null && BCrypt.checkpw(password, user.user_password)) {
-                    // Сначала определяем роль
-                    val role = getRoleName(user.role_id)
-                    // Затем обновляем состояние
+                    // Роль берём из глобального кэша, который уже загружен при старте
+                    val role = RoleCache.get(user.role_id)
                     _userRole.value = role
                     _loggedUser.value = user
                     _error.value = null
+                    LoggerService.log("Успешный вход: ${user.user_email}, роль: $role")
                     Timber.i("Успешный вход: ${user.user_email}, роль: $role")
                 } else {
                     _error.value = "Неверный email или пароль"
                 }
             } catch (e: Exception) {
                 _error.value = "Ошибка входа: ${e.message}"
+                Timber.e(e, "Ошибка входа")
             }
         }
     }
 
     /**
      * Регистрация нового пользователя.
-     * Создаёт запись с ролью "user", автоматически выполняет вход.
+     * Создаёт запись с ролью "user" и автоматически выполняет вход.
      */
     fun register(name: String, email: String, phone: String, password: String) {
         viewModelScope.launch {
@@ -83,13 +87,13 @@ class AuthController : ViewModel() {
                     role_id = userRole.id,
                     client_id = null
                 )
-
                 RepositoryProvider.userRepo.createUser(newUser)
 
                 // Автоматический вход
                 _loggedUser.value = newUser
                 _userRole.value = "user"
                 _error.value = null
+                LoggerService.log("Зарегистрирован и выполнен вход: ${newUser.user_email}")
                 Timber.i("Зарегистрирован и выполнен вход: ${newUser.user_email}")
             } catch (e: Exception) {
                 _error.value = "Ошибка регистрации: ${e.message}"
@@ -104,26 +108,14 @@ class AuthController : ViewModel() {
     fun logout() {
         _loggedUser.value = null
         _userRole.value = null
+        LoggerService.log("Пользователь вышел из системы")
         Timber.i("Пользователь вышел из системы")
     }
 
+    /**
+     * Обновляет данные текущего пользователя (например, после привязки клиента).
+     */
     fun updateLoggedUser(user: User) {
         _loggedUser.value = user
-    }
-
-    /**
-     * Вспомогательный метод для определения названия роли по её id.
-     * Выполняет несколько запросов к БД, но вызывается только один раз при входе.
-     */
-    private suspend fun getRoleName(roleId: String): String? {
-        val admin = RepositoryProvider.roleRepo.getRoleByName("admin")
-        val eng = RepositoryProvider.roleRepo.getRoleByName("engineer")
-        val user = RepositoryProvider.roleRepo.getRoleByName("user")
-        return when (roleId) {
-            admin?.id -> "admin"
-            eng?.id -> "engineer"
-            user?.id -> "user"
-            else -> null
-        }
     }
 }

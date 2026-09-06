@@ -6,18 +6,18 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import ru.bel.servicecenter.controllers.ClientController
 import ru.bel.servicecenter.rules.ValidationRules
+import ru.bel.servicecenter.viewmodels.ClientViewModel
 
 @Composable
 fun ClientEditScreen(
-    clientController: ClientController,
+    clientViewModel: ClientViewModel,
     onSaved: () -> Unit,
     onCancel: () -> Unit
 ) {
-    val currentClient by clientController.currentClient.collectAsState()
-    val errors by clientController.errors.collectAsState()
-    val message by clientController.message.collectAsState()
+    val currentClient by clientViewModel.currentClient.collectAsState()
+    val errors by clientViewModel.errors.collectAsState()
+    val message by clientViewModel.message.collectAsState()
 
     var isSaving by remember { mutableStateOf(false) }
 
@@ -36,7 +36,7 @@ fun ClientEditScreen(
 
         OutlinedTextField(
             value = currentClient.client_title,
-            onValueChange = { clientController.updateField("title", it) },
+            onValueChange = { clientViewModel.updateField("title", it) },
             label = { Text("Название организации") },
             isError = errors["client_title"] != null,
             supportingText = { errors["client_title"]?.let { Text(it) } },
@@ -47,7 +47,7 @@ fun ClientEditScreen(
 
         OutlinedTextField(
             value = currentClient.client_address,
-            onValueChange = { clientController.updateField("address", it) },
+            onValueChange = { clientViewModel.updateField("address", it) },
             label = { Text("Адрес") },
             isError = errors["client_address"] != null,
             supportingText = { errors["client_address"]?.let { Text(it) } },
@@ -58,7 +58,7 @@ fun ClientEditScreen(
 
         OutlinedTextField(
             value = currentClient.client_details,
-            onValueChange = { clientController.updateField("details", it) },
+            onValueChange = { clientViewModel.updateField("details", it) },
             label = { Text("Реквизиты") },
             isError = errors["client_details"] != null,
             supportingText = { errors["client_details"]?.let { Text(it) } },
@@ -70,7 +70,7 @@ fun ClientEditScreen(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(
                 checked = currentClient.is_legal,
-                onCheckedChange = { clientController.updateField("is_legal", it.toString()) },
+                onCheckedChange = { clientViewModel.updateField("is_legal", it.toString()) },
                 enabled = !isSaving
             )
             Text("Юридическое лицо")
@@ -90,7 +90,7 @@ fun ClientEditScreen(
             } else {
                 Button(onClick = {
                     isSaving = true
-                    clientController.saveClient()
+                    clientViewModel.saveClient()
                 }) { Text("Сохранить") }
                 Spacer(modifier = Modifier.width(16.dp))
                 Button(onClick = onCancel,

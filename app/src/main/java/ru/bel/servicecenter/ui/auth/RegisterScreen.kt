@@ -6,23 +6,24 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
-import ru.bel.servicecenter.controllers.AuthController
 import ru.bel.servicecenter.rules.ValidationRules
+import ru.bel.servicecenter.viewmodels.AuthViewModel
 
 @Composable
 fun RegisterScreen(
-    authController: AuthController = viewModel()
+    authViewModel: AuthViewModel
 ) {
     var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+
     var nameError by remember { mutableStateOf<String?>(null) }
     var emailError by remember { mutableStateOf<String?>(null) }
     var phoneError by remember { mutableStateOf<String?>(null) }
     var passwordError by remember { mutableStateOf<String?>(null) }
-    val authError by authController.error.collectAsState()
+
+    val authError by authViewModel.error.collectAsState()
 
     Column(
         modifier = Modifier
@@ -78,7 +79,7 @@ fun RegisterScreen(
                 phoneError = ValidationRules.validatePhone(phone)
                 passwordError = ValidationRules.validatePassword(password)
                 if (listOf(nameError, emailError, phoneError, passwordError).all { it == null }) {
-                    authController.register(name, email, phone, password)
+                    authViewModel.register(name, email, phone, password)
                 }
             },
             modifier = Modifier.fillMaxWidth()

@@ -1,4 +1,94 @@
 package ru.bel.servicecenter.ui.prices
 
-class PriceServicesScreen {
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import ru.bel.servicecenter.models.Category
+import ru.bel.servicecenter.models.Price
+import ru.bel.servicecenter.models.Service
+import ru.bel.servicecenter.viewmodels.PriceViewModel
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PriceServicesScreen(
+    priceViewModel: PriceViewModel,
+    category: Category,
+    onEditPrice: (Service, Price?) -> Unit,
+    onBack: () -> Unit
+) {
+    val servicesWithPrices by priceViewModel.serviceWithPrice.collectAsState()
+    val message by priceViewModel.message.collectAsState()
+    var showMessage by remember { mutableStateOf(false) }
+
+    LaunchedEffect(category.id) {
+        priceViewModel.loadServicesWithPrices(category.id)
+    }
+    LaunchedEffect(message) { if (message != null) showMessage = true }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Услуги: ${category.category_name}") },
+                navigationIcon = { TextButton(onClick = onBack) { Text("Назад") } }
+            )
+        }
+    ) { padding ->
+        if (servicesWithPrices.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        } else {
+            LazyColumn(modifier = Modifier.padding(padding)) {
+                items(servicesWithPrices) { item ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(item.service.service_name, style = MaterialTheme.typography.titleMedium)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = if (item.price != null) {
+                                    if (item.price.is_time) "${item.price.service_cost} руб/час" else "${item.price.service_cost} руб"
+                                } else {
+                                    "Цена не задана"
+                                }
+                            )
+                            if (item.price != null) {
+                                Text(
+                                    text = if (item.price.is_time) "Почасовая оплата" else "Фиксированная цена",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row {
+                                TextButton(onClick = { onEditPrice(item.service, item.price) }) { Text("Изменить") }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showMessage) {
+        AlertDialog(
+            onDismissRequest = { showMessage = false },
+            title = { Text("Сообщение") },
+            text = { Text(message ?: "") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showMessage = false
+                    priceViewModel.clearMessage()
+                }) { Text("OK") }
+            }
+        )
+    }
 }
