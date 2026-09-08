@@ -39,6 +39,7 @@ fun AppNavigation(onExit: () -> Unit) {
     val serviceViewModel = remember { ServiceViewModel() }
     val orderViewModel = remember { OrderViewModel() }
     val orderItemViewModel = remember { OrderItemViewModel() }
+    orderItemViewModel.orderViewModel = orderViewModel
 
     var connectionOk by remember { mutableStateOf<Boolean?>(null) }
     var integrityOk by remember { mutableStateOf<Boolean?>(null) }
@@ -81,7 +82,21 @@ fun AppNavigation(onExit: () -> Unit) {
                 val loggedUser by authViewModel.loggedUser.collectAsState()
 
                 LaunchedEffect(loggedUser) {
-                    if (loggedUser != null) {
+                    loggedUser?.let { user ->
+                        val role = authViewModel.userRole.value ?: "user"
+
+                        // Устанавливаем роль и пользователя в ViewModel заказов
+                        orderViewModel.currentAuthUser = user
+                        orderViewModel.currentUserRole = role
+
+                        // Для остальных ViewModel тоже можно сразу установить пользователя
+                        clientViewModel.currentAuthUser = user
+                        categoryViewModel.currentAuthUser = user
+                        serviceViewModel.currentAuthUser = user
+                        priceViewModel.currentAuthUser = user
+                        userViewModel.currentAuthUser = user
+                        orderItemViewModel.currentAuthUser = user
+
                         LoggerService.log("Переход на дашборд")
                         navController.navigate("dashboard") {
                             popUpTo("start") { inclusive = true }
@@ -94,7 +109,11 @@ fun AppNavigation(onExit: () -> Unit) {
                     startDestination = "start"
                 ) {
                     authGraph(navController, authViewModel)
-                    dashboardGraph(navController, authViewModel)
+                    dashboardGraph(
+                        navController = navController,
+                        authViewModel = authViewModel,
+                        onExit = onExit   // <-- передаём колбэк
+                    )
                     profileGraph(navController, authViewModel, userViewModel)
                     clientsGraph(navController, clientViewModel)
                     categoriesGraph(navController, categoryViewModel)

@@ -22,6 +22,7 @@ fun PriceServicesScreen(
     onBack: () -> Unit
 ) {
     val servicesWithPrices by priceViewModel.serviceWithPrice.collectAsState()
+    val isLoading by priceViewModel.isLoading.collectAsState()
     val message by priceViewModel.message.collectAsState()
     var showMessage by remember { mutableStateOf(false) }
 
@@ -38,12 +39,14 @@ fun PriceServicesScreen(
             )
         }
     ) { padding ->
-        if (servicesWithPrices.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+        when {
+            isLoading -> Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
-        } else {
-            LazyColumn(modifier = Modifier.padding(padding)) {
+            servicesWithPrices.isEmpty() -> Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                Text("Нет услуг в этой категории")
+            }
+            else -> LazyColumn(modifier = Modifier.padding(padding)) {
                 items(servicesWithPrices) { item ->
                     Card(
                         modifier = Modifier

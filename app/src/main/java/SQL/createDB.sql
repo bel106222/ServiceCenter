@@ -1,4 +1,4 @@
--- Включаем расширение для UUID, если ещё не включено
+-- Включаем расширение для UUID
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Таблица ролей
@@ -84,6 +84,16 @@ CREATE TABLE IF NOT EXISTS public.order_items (
     orderitem_quantity INT DEFAULT 1,
     orderitem_cost REAL DEFAULT 0,
     is_online BOOLEAN DEFAULT false,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    deleted_at TIMESTAMPTZ
+    );
+
+-- Таблица для хранения приложений к заказам
+CREATE TABLE IF NOT EXISTS public.attachments (
+                                                  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    order_id UUID NOT NULL REFERENCES public.orders(id) ON DELETE CASCADE,
+    filename TEXT NOT NULL,
+    url TEXT NOT NULL,
     created_at TIMESTAMPTZ DEFAULT now(),
     deleted_at TIMESTAMPTZ
     );

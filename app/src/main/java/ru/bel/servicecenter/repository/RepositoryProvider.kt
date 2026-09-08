@@ -15,6 +15,8 @@ object RepositoryProvider {
     val orderRepo: OrderRepository = repo
     val orderItemRepo: OrderItemRepository = repo
 
+    val attachmentRepo: AttachmentRepository = repo
+
     suspend fun checkConnection() = repo.checkConnection()
     suspend fun checkAdminExists() = repo.checkAdminExists()
 }

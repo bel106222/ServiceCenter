@@ -3,16 +3,20 @@ package ru.bel.servicecenter.ui.orders
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.filled.Add
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import ru.bel.servicecenter.models.OrderItem
 import ru.bel.servicecenter.viewmodels.OrderItemViewModel
 import ru.bel.servicecenter.viewmodels.OrderViewModel
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
+
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -21,6 +25,7 @@ fun OrderEditScreen(
     orderItemViewModel: OrderItemViewModel,
     onAddItem: () -> Unit,
     onEditItem: (OrderItem) -> Unit,
+    onAttachments: () -> Unit,
     onSaved: () -> Unit,
     onCancel: () -> Unit
 ) {
@@ -29,6 +34,8 @@ fun OrderEditScreen(
     val message by orderViewModel.message.collectAsState()
     val authorName by orderViewModel.authorName.collectAsState()
     val isAdminOrEngineer = orderViewModel.isAdminOrEngineer
+    val services by orderViewModel.services.collectAsState()
+    val draftAttachments by orderViewModel.draftAttachments.collectAsState()
 
     var isSaving by remember { mutableStateOf(false) }
 
@@ -102,8 +109,11 @@ fun OrderEditScreen(
                 text = "Общая сумма: ${currentOrder?.order_sum ?: 0f}",
                 style = MaterialTheme.typography.titleMedium
             )
-
             Spacer(modifier = Modifier.height(16.dp))
+
+            Button(onClick = onAttachments) {
+                Text("Вложения (${draftAttachments.size})")
+            }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(
@@ -112,18 +122,6 @@ fun OrderEditScreen(
                     enabled = !isSaving && isAdminOrEngineer
                 )
                 Text("Завершён")
-            }
-
-            if (isAdminOrEngineer) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(
-                        checked = currentOrder?.is_time ?: false,
-                        onCheckedChange = { orderViewModel.updateField("is_time", it.toString()) },
-                        enabled = !isSaving
-                    )
-                    Text("Почасовая оплата")
-                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -141,14 +139,14 @@ fun OrderEditScreen(
                             .padding(vertical = 4.dp)
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
-                            val serviceName = item.services?.service_name ?: "Неизвестная услуга"
+                            val serviceName = services.find { it.id == item.service_id }?.service_name ?: "Неизвестная услуга"
                             Text("Услуга: $serviceName")
                             Text("Количество: ${item.orderitem_quantity}")
                             Text("Сумма: ${item.orderitem_cost}")
                             if (isAdminOrEngineer) {
                                 Row {
                                     TextButton(onClick = { onEditItem(item) }) { Text("Изменить") }
-                                    TextButton(onClick = { orderViewModel.deleteOrderItem(item) }) { Text("Удалить") }
+                                    TextButton(onClick = { orderItemViewModel.deleteDraftItem(item) {} }) { Text("Удалить") }
                                 }
                             }
                         }

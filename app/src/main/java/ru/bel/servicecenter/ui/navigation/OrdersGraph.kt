@@ -12,6 +12,7 @@ import androidx.navigation.compose.composable
 import ru.bel.servicecenter.ui.orders.OrderEditScreen
 import ru.bel.servicecenter.ui.orders.OrderItemEditScreen
 import ru.bel.servicecenter.ui.orders.OrdersListScreen
+import ru.bel.servicecenter.ui.orders.OrderAttachmentsScreen
 import ru.bel.servicecenter.viewmodels.OrderItemViewModel
 import ru.bel.servicecenter.viewmodels.OrderViewModel
 
@@ -52,6 +53,7 @@ fun NavGraphBuilder.ordersGraph(
                 orderItemViewModel.startEditing(item)
                 navController.navigate("order_item_edit")
             },
+            onAttachments = { navController.navigate("order_attachments") },
             onSaved = { navController.popBackStack() },
             onCancel = { navController.popBackStack() }
         )
@@ -71,6 +73,7 @@ fun NavGraphBuilder.ordersGraph(
                 orderItemViewModel.startEditing(item)
                 navController.navigate("order_item_edit")
             },
+            onAttachments = { navController.navigate("order_attachments") },
             onSaved = { navController.popBackStack() },
             onCancel = { navController.popBackStack() }
         )
@@ -87,6 +90,14 @@ fun NavGraphBuilder.ordersGraph(
     composable("order_item_edit") {
         OrderItemEditScreen(
             orderItemViewModel = orderItemViewModel,
+            onSaved = { navController.popBackStack() },
+            onCancel = { navController.popBackStack() }
+        )
+    }
+
+    composable("order_attachments") {
+        OrderAttachmentsScreen(
+            orderViewModel = orderViewModel,
             onSaved = { navController.popBackStack() },
             onCancel = { navController.popBackStack() }
         )

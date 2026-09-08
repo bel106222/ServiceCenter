@@ -5,11 +5,13 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import ru.bel.servicecenter.models.DraftAttachment
 import ru.bel.servicecenter.models.Order
 import ru.bel.servicecenter.models.OrderItem
 import ru.bel.servicecenter.models.OrderWithItems
 import ru.bel.servicecenter.models.User
 import ru.bel.servicecenter.models.UserName
+import ru.bel.servicecenter.models.Service
 import ru.bel.servicecenter.repository.RepositoryProvider
 import ru.bel.servicecenter.rules.ValidationRules
 import ru.bel.servicecenter.utils.LoggerService
@@ -18,32 +20,32 @@ import timber.log.Timber
 import java.util.UUID
 import java.time.LocalDateTime
 
-/**
- * ViewModel для работы с заказами и их позициями.
- * Использует единый запрос для получения заказов с позициями и услугами,
- * что минимизирует сетевые обращения и ускоряет работу интерфейса.
- */
 class OrderViewModel : ViewModel() {
 
-    // Все заказы с позициями (основной список)
     private val _ordersWithItems = MutableStateFlow<List<OrderWithItems>>(emptyList())
     val ordersWithItems: StateFlow<List<OrderWithItems>> = _ordersWithItems
 
-    // Текущий редактируемый заказ с позициями
     private val _currentOrderWithItems = MutableStateFlow<OrderWithItems?>(null)
     val currentOrderWithItems: StateFlow<OrderWithItems?> = _currentOrderWithItems
 
-    // Имя автора заказа
+    private val _services = MutableStateFlow<List<Service>>(emptyList())
+    val services: StateFlow<List<Service>> = _services
+
     private val _authorName = MutableStateFlow("")
     val authorName: StateFlow<String> = _authorName
 
-    // Ошибки валидации
+    // Черновик вложений (фотографий)
+    private val _draftAttachments = MutableStateFlow<List<DraftAttachment>>(emptyList())
+    val draftAttachments: StateFlow<List<DraftAttachment>> = _draftAttachments
+
     private val _errors = MutableStateFlow<Map<String, String?>>(emptyMap())
     val errors: StateFlow<Map<String, String?>> = _errors
 
-    // Сообщение пользователю
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
+
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = _isLoading
 
     var currentAuthUser: User? = null
     var currentUserRole: String? = null
@@ -53,39 +55,52 @@ class OrderViewModel : ViewModel() {
     var isAdminOrEngineer: Boolean = false
         private set
 
-    /**
-     * Загружает заказы с позициями одним запросом.
-     * Роль берётся из currentUserRole (уже в памяти).
-     */
+    // Храним исходные позиции при редактировании, чтобы определить изменения
+    private var originalItems: List<OrderItem> = emptyList()
+
     suspend fun loadOrders() {
         val authUser = currentAuthUser ?: return
         val role = currentUserRole ?: "user"
-        val allOrders = RepositoryProvider.orderRepo.getOrdersWithItems()
-        _ordersWithItems.value = when (role) {
-            "admin", "engineer" -> allOrders
-            "user" -> allOrders.filter { it.user_id == authUser.id }
-            else -> emptyList()
+        _isLoading.value = true
+        _ordersWithItems.value = emptyList()
+        try {
+            val allOrders = RepositoryProvider.orderRepo.getOrdersWithItems().map { order ->
+                order.copy(order_items = order.order_items.filter { it.deleted_at == null })
+            }
+            val filtered = when (role) {
+                "admin", "engineer" -> allOrders
+                "user" -> allOrders.filter { it.user_id == authUser.id }
+                else -> emptyList()
+            }
+            // Сортировка: сначала незавершённые (is_completed = false), затем завершённые.
+            // Внутри каждой группы – по убыванию created_at (свежие сверху).
+            val sorted = filtered.sortedWith(
+                compareBy<OrderWithItems> { it.is_completed }          // false раньше true
+                    .thenByDescending { it.created_at }                // свежие сверху
+            )
+            _ordersWithItems.value = sorted
+            _services.value = RepositoryProvider.serviceRepo.getAllServices()
+            isAdminOrEngineer = role == "admin" || role == "engineer"
+        } catch (e: Exception) {
+            _message.value = "Ошибка загрузки заказов: ${e.message}"
+            Timber.e(e, "Ошибка загрузки заказов")
+        } finally {
+            _isLoading.value = false
         }
-        isAdminOrEngineer = role == "admin" || role == "engineer"
     }
 
-    /**
-     * Перезагружает список заказов (например, после сохранения позиции).
-     */
     suspend fun refreshOrders() {
         loadOrders()
         val currentId = _currentOrderWithItems.value?.id
         if (currentId != null) {
             _currentOrderWithItems.value = _ordersWithItems.value.find { it.id == currentId }
+            originalItems = _currentOrderWithItems.value?.order_items ?: emptyList()
         }
     }
 
-    /**
-     * Подготавливает создание нового заказа.
-     * Для генерации номера загружает клиентов (единственный дополнительный запрос).
-     */
     fun prepareForNewOrder() {
         val user = currentAuthUser ?: return
+
         viewModelScope.launch {
             val clients = RepositoryProvider.clientRepo.getAllClients()
             val clientTitle = clients.find { it.id == user.client_id }?.client_title ?: "XXX"
@@ -105,39 +120,93 @@ class OrderViewModel : ViewModel() {
             )
             _authorName.value = user.user_name
             isNewOrder = true
+            originalItems = emptyList()
+            _draftAttachments.value = emptyList()
             _errors.value = emptyMap()
             _message.value = null
         }
     }
 
-    /**
-     * Подготавливает редактирование существующего заказа.
-     * Все данные уже есть в объекте, дополнительных запросов нет.
-     */
     fun prepareForEdit(orderWithItems: OrderWithItems) {
         _currentOrderWithItems.value = orderWithItems
+        originalItems = orderWithItems.order_items
         isNewOrder = false
         _authorName.value = orderWithItems.users?.user_name ?: "Неизвестный"
         _errors.value = emptyMap()
         _message.value = null
+
+        // Загружаем приложения из БД и кладём в черновик
+        viewModelScope.launch {
+            val attachments = RepositoryProvider.attachmentRepo.getAttachmentsByOrderId(orderWithItems.id)
+            _draftAttachments.value = attachments.map { attachment ->
+                DraftAttachment(
+                    id = attachment.id,
+                    uri = attachment.url,
+                    fileName = attachment.filename,
+                    isNew = false,
+                    fileBytes = null
+                )
+            }
+        }
     }
 
-    /**
-     * Обновляет отдельное поле текущего заказа.
-     */
     fun updateField(field: String, value: String) {
         val order = _currentOrderWithItems.value ?: return
         _currentOrderWithItems.value = when (field) {
             "description" -> order.copy(order_description = value)
             "is_completed" -> order.copy(is_completed = value.toBoolean())
-            "is_time" -> order.copy(is_time = value.toBoolean())
             else -> order
         }
     }
 
-    /**
-     * Сохраняет текущий заказ (создание или обновление).
-     */
+    // ===== Методы работы с черновиком =====
+
+    fun addItemToDraft(item: OrderItem) {
+        val current = _currentOrderWithItems.value ?: return
+        val newItems = current.order_items + item
+        val newSum = newItems.sumOf { it.orderitem_cost.toDouble() }.toFloat()
+        _currentOrderWithItems.value = current.copy(order_items = newItems, order_sum = newSum)
+    }
+
+    fun updateItemInDraft(item: OrderItem) {
+        val current = _currentOrderWithItems.value ?: return
+        val newItems = current.order_items.map { if (it.id == item.id) item else it }
+        val newSum = newItems.sumOf { it.orderitem_cost.toDouble() }.toFloat()
+        _currentOrderWithItems.value = current.copy(order_items = newItems, order_sum = newSum)
+    }
+
+    fun deleteItemFromDraft(itemId: String) {
+        val current = _currentOrderWithItems.value ?: return
+        val newItems = current.order_items.filterNot { it.id == itemId }
+        val newSum = newItems.sumOf { it.orderitem_cost.toDouble() }.toFloat()
+        _currentOrderWithItems.value = current.copy(order_items = newItems, order_sum = newSum)
+    }
+
+    // Добавить новое вложение в черновик
+    fun addDraftAttachment(uri: String, fileName: String, fileBytes: ByteArray?) {
+        val newId = UUID.randomUUID().toString()
+        val draft = DraftAttachment(
+            id = newId,
+            uri = uri,
+            fileName = fileName,
+            isNew = true,
+            fileBytes = fileBytes
+        )
+        _draftAttachments.value = _draftAttachments.value + draft
+    }
+
+    // Удалить вложение из черновика
+    fun removeDraftAttachment(attachmentId: String) {
+        _draftAttachments.value = _draftAttachments.value.filterNot { it.id == attachmentId }
+    }
+
+    // Очистить черновик (при отмене или после сохранения)
+    fun clearDraftAttachments() {
+        _draftAttachments.value = emptyList()
+    }
+
+    // ===== Сохранение заказа =====
+
     fun saveOrder() {
         val orderWithItems = _currentOrderWithItems.value ?: return
         val authUser = currentAuthUser ?: run { _message.value = "Не выполнен вход"; return }
@@ -148,19 +217,40 @@ class OrderViewModel : ViewModel() {
             _errors.value = errs
             if (errs.any { it.value != null }) return@launch
 
-            val order = Order(
-                id = orderWithItems.id,
-                order_number = orderWithItems.order_number,
-                order_description = orderWithItems.order_description,
-                user_id = orderWithItems.user_id,
-                order_sum = orderWithItems.order_sum,
-                is_completed = orderWithItems.is_completed,
-                is_time = orderWithItems.is_time,
-                created_at = orderWithItems.created_at,
-                deleted_at = orderWithItems.deleted_at
-            )
+            val currentItems = orderWithItems.order_items
+            val originalIds = originalItems.map { it.id }.toSet()
+            val currentIds = currentItems.map { it.id }.toSet()
 
             try {
+                // Удаляем позиции, которые отсутствуют в текущем списке
+                originalItems.forEach { original ->
+                    if (original.id !in currentIds) {
+                        RepositoryProvider.orderItemRepo.deleteOrderItem(original)
+                    }
+                }
+
+                // Создаём новые или обновляем существующие
+                currentItems.forEach { item ->
+                    if (item.id !in originalIds) {
+                        RepositoryProvider.orderItemRepo.createOrderItem(item)
+                    } else {
+                        RepositoryProvider.orderItemRepo.updateOrderItem(item)
+                    }
+                }
+
+                // Сохраняем сам заказ
+                val order = Order(
+                    id = orderWithItems.id,
+                    order_number = orderWithItems.order_number,
+                    order_description = orderWithItems.order_description,
+                    user_id = orderWithItems.user_id,
+                    order_sum = orderWithItems.order_sum,
+                    is_completed = orderWithItems.is_completed,
+                    is_time = orderWithItems.is_time,
+                    created_at = orderWithItems.created_at,
+                    deleted_at = orderWithItems.deleted_at
+                )
+
                 if (isNewOrder) {
                     RepositoryProvider.orderRepo.createOrder(order)
                     _message.value = "Заказ создан"
@@ -170,7 +260,14 @@ class OrderViewModel : ViewModel() {
                     _message.value = "Заказ обновлён"
                     LoggerService.log("Заказ обновлён: ${order.order_number}")
                 }
+
+                // Обновляем список и текущий заказ из БД
                 loadOrders()
+                val updated = _ordersWithItems.value.find { it.id == order.id }
+                if (updated != null) {
+                    _currentOrderWithItems.value = updated
+                    originalItems = updated.order_items
+                }
             } catch (e: Exception) {
                 _message.value = "Ошибка сохранения: ${e.message}"
                 Timber.e(e, "Ошибка сохранения заказа")
@@ -178,9 +275,8 @@ class OrderViewModel : ViewModel() {
         }
     }
 
-    /**
-     * Удаляет заказ, если у него нет позиций.
-     */
+    // ===== Удаление всего заказа =====
+
     fun deleteOrder(orderWithItems: OrderWithItems) {
         val authUser = currentAuthUser ?: run { _message.value = "Не выполнен вход"; return }
         viewModelScope.launch {
@@ -215,93 +311,7 @@ class OrderViewModel : ViewModel() {
         }
     }
 
-    /**
-     * Удаляет позицию заказа и пересчитывает сумму.
-     * Работает с локальным состоянием для мгновенного обновления UI.
-     */
-    fun deleteOrderItem(item: OrderItem) {
-        val authUser = currentAuthUser ?: run { _message.value = "Не выполнен вход"; return }
-        viewModelScope.launch {
-            if (!isAdminOrEngineer) {
-                _message.value = "Недостаточно прав"
-                return@launch
-            }
-
-            val current = _currentOrderWithItems.value ?: return@launch
-            if (current.id != item.order_id) return@launch
-
-            // Оптимистичное удаление из текущего состояния
-            val newItems = current.order_items.filterNot { it.id == item.id }
-            val newSum = newItems.sumOf { it.orderitem_cost.toDouble() }.toFloat()
-            _currentOrderWithItems.value = current.copy(order_items = newItems, order_sum = newSum)
-            _ordersWithItems.value = _ordersWithItems.value.map {
-                if (it.id == current.id) it.copy(order_items = newItems, order_sum = newSum) else it
-            }
-
-            try {
-                RepositoryProvider.orderItemRepo.deleteOrderItem(item)
-
-                // Обновляем заказ в БД с новой суммой
-                val updatedOrder = Order(
-                    id = current.id,
-                    order_number = current.order_number,
-                    order_description = current.order_description,
-                    user_id = current.user_id,
-                    order_sum = newSum,
-                    is_completed = current.is_completed,
-                    is_time = current.is_time,
-                    created_at = current.created_at,
-                    deleted_at = current.deleted_at
-                )
-                RepositoryProvider.orderRepo.updateOrder(updatedOrder)
-
-                _message.value = "Позиция удалена"
-                LoggerService.log("Позиция удалена из заказа: ${current.order_number}")
-            } catch (e: Exception) {
-                // Откатываем изменения
-                _currentOrderWithItems.value = current
-                _ordersWithItems.value = _ordersWithItems.value.map {
-                    if (it.id == current.id) it.copy(order_items = current.order_items, order_sum = current.order_sum) else it
-                }
-                _message.value = "Ошибка удаления позиции: ${e.message}"
-                Timber.e(e, "Ошибка удаления позиции")
-            }
-        }
-    }
-
-    /**
-     * Пересчитывает сумму заказа на основе позиций и сохраняет её.
-     */
-    suspend fun updateOrderSum(orderId: String) {
-        val allOrders = RepositoryProvider.orderRepo.getOrdersWithItems()
-        val orderWithItems = allOrders.find { it.id == orderId } ?: return
-        val sum = orderWithItems.order_items.sumOf { it.orderitem_cost.toDouble() }.toFloat()
-        val order = Order(
-            id = orderWithItems.id,
-            order_number = orderWithItems.order_number,
-            order_description = orderWithItems.order_description,
-            user_id = orderWithItems.user_id,
-            order_sum = sum,
-            is_completed = orderWithItems.is_completed,
-            is_time = orderWithItems.is_time,
-            created_at = orderWithItems.created_at,
-            deleted_at = orderWithItems.deleted_at
-        )
-        RepositoryProvider.orderRepo.updateOrder(order)
-        _ordersWithItems.value = _ordersWithItems.value.map {
-            if (it.id == orderId) it.copy(order_sum = sum) else it
-        }
-        _currentOrderWithItems.value = _currentOrderWithItems.value?.let {
-            if (it.id == orderId) it.copy(order_sum = sum) else it
-        }
-    }
-
-    /**
-     * Очищает сообщение.
-     */
-    fun clearMessage() {
-        _message.value = null
-    }
+    // Вспомогательные методы (canEditOrder, generateOrderNumber, updateOrderSum) оставьте как ранее, но updateOrderSum больше не нужен, так как сумма считается на клиенте и сохраняется через saveOrder.
 
     private suspend fun canEditOrder(authUser: User, order: OrderWithItems): Boolean {
         val role = RoleCache.get(authUser.role_id) ?: return false
@@ -312,9 +322,6 @@ class OrderViewModel : ViewModel() {
         }
     }
 
-    /**
-     * Генерирует уникальный номер заказа на основе названия клиента.
-     */
     private fun generateOrderNumber(clientTitle: String): String {
         val prefix = generatePrefix(clientTitle)
         val existingNumbers = _ordersWithItems.value
@@ -325,9 +332,6 @@ class OrderViewModel : ViewModel() {
         return prefix + next.toString().padStart(5, '0')
     }
 
-    /**
-     * Формирует префикс из первых трёх символов названия клиента.
-     */
     private fun generatePrefix(title: String): String {
         val cleaned = title.trim()
         if (cleaned.isEmpty()) return "XXX"
@@ -335,5 +339,9 @@ class OrderViewModel : ViewModel() {
         if (first.length == 3) return first.uppercase()
         val last = cleaned.last()
         return (first + last.toString().repeat(3 - first.length)).uppercase()
+    }
+
+    fun clearMessage() {
+        _message.value = null
     }
 }

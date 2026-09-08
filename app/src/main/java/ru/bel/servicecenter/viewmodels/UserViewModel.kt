@@ -13,10 +13,6 @@ import ru.bel.servicecenter.utils.LoggerService
 import ru.bel.servicecenter.utils.RoleCache
 import timber.log.Timber
 
-/**
- * ViewModel для управления пользователями.
- * Загрузка, создание, редактирование, удаление с проверкой прав.
- */
 class UserViewModel : ViewModel() {
 
     private val _users = MutableStateFlow<List<User>>(emptyList())
@@ -33,25 +29,26 @@ class UserViewModel : ViewModel() {
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
 
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = _isLoading
+
     var currentAuthUser: User? = null
 
-    /**
-     * Загружает всех пользователей.
-     */
     fun loadUsers() {
         viewModelScope.launch {
+            _isLoading.value = true
+            _users.value = emptyList()
             try {
                 _users.value = RepositoryProvider.userRepo.getAllUsers()
             } catch (e: Exception) {
                 _message.value = "Ошибка загрузки пользователей: ${e.message}"
                 Timber.e(e, "Ошибка загрузки пользователей")
+            } finally {
+                _isLoading.value = false
             }
         }
     }
 
-    /**
-     * Сохраняет пользователя (создание или обновление) с валидацией и проверкой прав.
-     */
     fun saveUser() {
         val user = _currentUser.value
         val authUser = currentAuthUser ?: run {
@@ -60,19 +57,16 @@ class UserViewModel : ViewModel() {
         }
 
         viewModelScope.launch {
-            // Проверка прав
             if (!canModify(authUser, user.id.isEmpty())) {
                 _message.value = "Недостаточно прав"
                 return@launch
             }
 
-            // Валидация полей
             val errs = mutableMapOf<String, String?>()
             errs["user_name"] = ValidationRules.validateRequired(user.user_name, "Имя")
             errs["user_email"] = ValidationRules.validateEmail(user.user_email)
             errs["user_phone"] = ValidationRules.validatePhone(user.user_phone)
 
-            // Пароль обязателен только при создании
             if (user.id.isEmpty() || _users.value.none { it.id == user.id }) {
                 errs["user_password"] = ValidationRules.validatePassword(user.user_password)
             } else if (user.user_password.isNotEmpty() && user.user_password != "***") {
@@ -84,7 +78,6 @@ class UserViewModel : ViewModel() {
             if (errs.any { it.value != null }) return@launch
 
             try {
-                // Проверка уникальности email
                 val existing = RepositoryProvider.userRepo.getUserByEmail(user.user_email)
                 if (existing != null && existing.id != user.id) {
                     _errors.value = _errors.value.toMutableMap().apply { put("user_email", "Email уже используется") }
@@ -92,12 +85,10 @@ class UserViewModel : ViewModel() {
                 }
 
                 var updatedUser = user
-                // Хешируем пароль только если он реально изменился
                 if (user.user_password.isNotEmpty() && user.user_password != "***") {
                     val hashed = BCrypt.hashpw(user.user_password, BCrypt.gensalt())
                     updatedUser = user.copy(user_password = hashed)
                 } else if (user.id.isNotEmpty()) {
-                    // Оставляем старый пароль
                     val original = _users.value.find { it.id == user.id }
                     if (original != null) {
                         updatedUser = user.copy(user_password = original.user_password)
@@ -121,9 +112,6 @@ class UserViewModel : ViewModel() {
         }
     }
 
-    /**
-     * Удаляет пользователя (SoftDelete).
-     */
     fun deleteUser(user: User) {
         val authUser = currentAuthUser ?: run {
             _message.value = "Не выполнен вход"
@@ -146,17 +134,11 @@ class UserViewModel : ViewModel() {
         }
     }
 
-    /**
-     * Устанавливает пользователя для редактирования.
-     */
     fun setEditingUser(user: User) {
-        _currentUser.value = user.copy(user_password = "***") // заглушка, чтобы не показывать хеш
+        _currentUser.value = user.copy(user_password = "***")
         _errors.value = emptyMap()
     }
 
-    /**
-     * Обновляет отдельное поле текущего пользователя.
-     */
     fun updateField(field: String, value: String) {
         val c = _currentUser.value
         _currentUser.value = when (field) {
@@ -170,21 +152,15 @@ class UserViewModel : ViewModel() {
         }
     }
 
-    /**
-     * Очищает сообщение.
-     */
     fun clearMessage() {
         _message.value = null
     }
 
-    /**
-     * Проверяет, может ли пользователь изменять/удалять пользователей.
-     */
     private suspend fun canModify(user: User, isNew: Boolean): Boolean {
         val role = RoleCache.get(user.role_id) ?: return false
         return when (role) {
             "admin" -> true
-            "engineer" -> isNew || user.client_id == null // инженер может создавать, но не редактировать чужих
+            "engineer" -> isNew || user.client_id == null
             else -> false
         }
     }

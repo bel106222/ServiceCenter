@@ -1,6 +1,11 @@
 package ru.bel.servicecenter.models
 
 import kotlinx.serialization.Serializable
+
+@Serializable
+data class UserName(
+    val user_name: String
+)
 @Serializable
 data class OrderWithItems(
     val id: String,
@@ -14,9 +19,4 @@ data class OrderWithItems(
     val deleted_at: String? = null,
     val order_items: List<OrderItem> = emptyList(),
     val users: UserName? = null
-)
-
-@Serializable
-data class UserName(
-    val user_name: String
 )

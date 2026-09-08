@@ -11,11 +11,13 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import ru.bel.servicecenter.ui.dashboard.DashboardItem
 import ru.bel.servicecenter.ui.dashboard.DashboardScreen
+import ru.bel.servicecenter.ui.reports.ReportsScreen
 import ru.bel.servicecenter.viewmodels.AuthViewModel
 
 fun NavGraphBuilder.dashboardGraph(
     navController: NavController,
-    authViewModel: AuthViewModel
+    authViewModel: AuthViewModel,
+    onExit: () -> Unit
 ) {
     composable("dashboard") {
         val role by authViewModel.userRole.collectAsState()
@@ -24,7 +26,7 @@ fun NavGraphBuilder.dashboardGraph(
                 CircularProgressIndicator()
             }
         } else {
-            val items = when (role) {
+            val roleSpecificItems = when (role) {
                 "user" -> listOf(
                     DashboardItem("Профиль") { navController.navigate("profile_user") },
                     DashboardItem("Заказы") { navController.navigate("orders") }
@@ -49,7 +51,22 @@ fun NavGraphBuilder.dashboardGraph(
                 )
                 else -> emptyList()
             }
+
+            val items = roleSpecificItems + DashboardItem("Отчёты") {
+                navController.navigate("reports")
+            } + DashboardItem("Выход") {
+                onExit()
+            }
+
             DashboardScreen(items = items)
         }
+    }
+
+    composable("reports") {
+        val role by authViewModel.userRole.collectAsState()
+        ReportsScreen(
+            role = role ?: "unknown",
+            onBack = { navController.popBackStack() }
+        )
     }
 }

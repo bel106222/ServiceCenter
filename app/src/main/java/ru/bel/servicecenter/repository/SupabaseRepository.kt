@@ -8,17 +8,18 @@ import ru.bel.servicecenter.models.*
 import ru.bel.servicecenter.utils.LoggerService
 import timber.log.Timber
 import java.io.OutputStreamWriter
+import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
 class SupabaseRepository : ClientRepository, RoleRepository, UserRepository,
     CategoryRepository, ServiceRepository, PriceRepository, OrderRepository,
-    OrderItemRepository {
+    OrderItemRepository, AttachmentRepository {
 
     private val json = Json {
         ignoreUnknownKeys = true
         isLenient = true
-        encodeDefaults = false
+        encodeDefaults = true
     }
 
     private val baseUrl = BuildConfig.SUPABASE_URL + "/rest/v1"
@@ -201,6 +202,42 @@ class SupabaseRepository : ClientRepository, RoleRepository, UserRepository,
     override suspend fun deleteOrderItem(item: OrderItem) = softDelete("order_items", item.id)
     override suspend fun getOrderItemsByOrderId(orderId: String): List<OrderItem> =
         get("order_items", "select" to "*", "order_id" to "eq.$orderId", "deleted_at" to "is.null")
+
+    // ---------- Attachments ----------
+    override suspend fun getAttachmentsByOrderId(orderId: String): List<Attachment> =
+        get("attachments", "select" to "*", "order_id" to "eq.$orderId", "deleted_at" to "is.null")
+
+    override suspend fun createAttachment(attachment: Attachment) {
+        post("attachments", attachment)
+    }
+
+    override suspend fun deleteAttachment(attachment: Attachment) {
+        softDelete("attachments", attachment.id)
+    }
+
+    override suspend fun uploadFileToStorage(
+        bucket: String,
+        fileName: String,
+        fileBytes: ByteArray,
+        contentType: String
+    ): String {
+        val uploadUrl = "${BuildConfig.SUPABASE_URL}/storage/v1/object/$bucket/$fileName"
+        val connection = URL(uploadUrl).openConnection() as HttpURLConnection
+        connection.requestMethod = "POST"
+        connection.setRequestProperty("Authorization", "Bearer $apiKey")
+        connection.setRequestProperty("Content-Type", contentType)
+        connection.doOutput = true
+        connection.outputStream.use { it.write(fileBytes) }
+
+        val responseCode = connection.responseCode
+        if (responseCode !in 200..299) {
+            val error = connection.errorStream?.bufferedReader()?.readText() ?: ""
+            connection.disconnect()
+            throw Exception("Ошибка загрузки файла: $responseCode $error")
+        }
+        connection.disconnect()
+        return "${BuildConfig.SUPABASE_URL}/storage/v1/object/public/$bucket/$fileName"
+    }
 
     // ------------------- Проверки БД -------------------
     suspend fun checkConnection(): Boolean = withContext(Dispatchers.IO) {

@@ -14,41 +14,28 @@ import ru.bel.servicecenter.utils.LoggerService
 import ru.bel.servicecenter.utils.RoleCache
 import timber.log.Timber
 
-/**
- * ViewModel для управления услугами.
- * Загружает категории, услуги выбранной категории, выполняет CRUD.
- */
 class ServiceViewModel : ViewModel() {
 
-    // Список всех категорий
     private val _categories = MutableStateFlow<List<Category>>(emptyList())
     val categories: StateFlow<List<Category>> = _categories
 
-    // Услуги выбранной категории
     private val _services = MutableStateFlow<List<Service>>(emptyList())
     val services: StateFlow<List<Service>> = _services
 
-    // Текущая редактируемая услуга
     private val _currentService = MutableStateFlow<Service?>(null)
     val currentService: StateFlow<Service?> = _currentService
 
-    // Ошибки валидации
     private val _errors = MutableStateFlow<Map<String, String?>>(emptyMap())
     val errors: StateFlow<Map<String, String?>> = _errors
 
-    // Сообщение пользователю
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
 
-    // Флаг загрузки (для индикатора)
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
 
     var currentAuthUser: User? = null
 
-    /**
-     * Загружает категории.
-     */
     fun loadCategories() {
         viewModelScope.launch {
             try {
@@ -60,13 +47,10 @@ class ServiceViewModel : ViewModel() {
         }
     }
 
-    /**
-     * Загружает услуги для выбранной категории.
-     */
     fun loadServices(categoryId: String) {
         viewModelScope.launch {
             _isLoading.value = true
-            _services.value = emptyList() // очищаем, чтобы не показывать старые данные
+            _services.value = emptyList()
             try {
                 _services.value = RepositoryProvider.serviceRepo.getServicesByCategoryId(categoryId)
             } catch (e: Exception) {
@@ -78,10 +62,6 @@ class ServiceViewModel : ViewModel() {
         }
     }
 
-    /**
-     * Подготавливает экран для создания или редактирования услуги.
-     * Если услуга null — создаётся новый объект.
-     */
     fun startEditing(service: Service?) {
         _currentService.value = service ?: Service(
             service_name = "",
@@ -92,9 +72,6 @@ class ServiceViewModel : ViewModel() {
         _errors.value = emptyMap()
     }
 
-    /**
-     * Сохраняет услугу (создание или обновление).
-     */
     fun saveService() {
         val service = _currentService.value ?: return
         val authUser = currentAuthUser ?: run {
@@ -124,7 +101,6 @@ class ServiceViewModel : ViewModel() {
                     _message.value = "Услуга обновлена"
                     LoggerService.log("Услуга обновлена: ${service.service_name}")
                 }
-                // Обновляем список услуг текущей категории
                 loadServices(service.category_id)
             } catch (e: Exception) {
                 _message.value = "Ошибка сохранения: ${e.message}"
@@ -133,9 +109,6 @@ class ServiceViewModel : ViewModel() {
         }
     }
 
-    /**
-     * Удаляет услугу.
-     */
     fun deleteService(service: Service) {
         val authUser = currentAuthUser ?: run {
             _message.value = "Не выполнен вход"
@@ -158,9 +131,6 @@ class ServiceViewModel : ViewModel() {
         }
     }
 
-    /**
-     * Обновляет отдельное поле текущей услуги.
-     */
     fun updateField(field: String, value: String) {
         val service = _currentService.value ?: return
         _currentService.value = when (field) {
@@ -172,16 +142,10 @@ class ServiceViewModel : ViewModel() {
         }
     }
 
-    /**
-     * Очищает сообщение.
-     */
     fun clearMessage() {
         _message.value = null
     }
 
-    /**
-     * Проверяет права на изменение услуг.
-     */
     private suspend fun canModify(user: User): Boolean {
         val role = RoleCache.get(user.role_id) ?: return false
         return role == "admin" || role == "engineer"

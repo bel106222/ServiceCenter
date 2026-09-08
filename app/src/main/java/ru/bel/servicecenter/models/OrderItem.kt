@@ -5,7 +5,7 @@ import java.util.UUID
 
 @Serializable
 data class OrderItem(
-    val id: String = "",
+    val id: String = UUID.randomUUID().toString(),
     val order_id: String,
     val service_id: String,
     val user_id: String,
@@ -14,5 +14,4 @@ data class OrderItem(
     val is_online: Boolean = false,
     val created_at: String = "",
     val deleted_at: String? = null,
-    val services: ServiceName? = null   // ← новое поле
 )

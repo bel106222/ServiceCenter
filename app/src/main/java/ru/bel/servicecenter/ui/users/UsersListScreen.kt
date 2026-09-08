@@ -5,6 +5,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import ru.bel.servicecenter.models.User
@@ -18,6 +19,7 @@ fun UsersListScreen(
     onBack: () -> Unit
 ) {
     val users by userViewModel.users.collectAsState()
+    val isLoading by userViewModel.isLoading.collectAsState()
     val message by userViewModel.message.collectAsState()
     var showMessage by remember { mutableStateOf(false) }
 
@@ -43,23 +45,29 @@ fun UsersListScreen(
             }) { Text("+") }
         }
     ) { padding ->
-        LazyColumn(modifier = Modifier.padding(padding)) {
-            items(users) { user ->
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(user.user_name, style = MaterialTheme.typography.titleMedium)
-                        Text(user.user_email)
-                        Row {
-                            TextButton(onClick = {
-                                userViewModel.clearMessage()
-                                userViewModel.setEditingUser(user)
-                                onEditUser(user)
-                            }) { Text("Изменить") }
-                            TextButton(onClick = { userViewModel.deleteUser(user) }) { Text("Удалить") }
+        if (isLoading) {
+            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        } else {
+            LazyColumn(modifier = Modifier.padding(padding)) {
+                items(users) { user ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(user.user_name, style = MaterialTheme.typography.titleMedium)
+                            Text(user.user_email)
+                            Row {
+                                TextButton(onClick = {
+                                    userViewModel.clearMessage()
+                                    userViewModel.setEditingUser(user)
+                                    onEditUser(user)
+                                }) { Text("Изменить") }
+                                TextButton(onClick = { userViewModel.deleteUser(user) }) { Text("Удалить") }
+                            }
                         }
                     }
                 }

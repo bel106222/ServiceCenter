@@ -64,6 +64,9 @@ dependencies {
     // Timber — логирование
     implementation("com.jakewharton.timber:timber:5.0.1")
 
+    // Coil для загрузки изображений
+    implementation("io.coil-kt:coil-compose:2.6.0")
+
     // Ktor — HTTP-клиент для REST
     implementation("io.ktor:ktor-client-android:2.3.3")
     implementation("io.ktor:ktor-client-content-negotiation:2.3.3")

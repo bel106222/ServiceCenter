@@ -5,6 +5,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import ru.bel.servicecenter.models.Client
@@ -18,6 +19,7 @@ fun ClientsListScreen(
     onBack: () -> Unit
 ) {
     val clients by clientViewModel.clients.collectAsState()
+    val isLoading by clientViewModel.isLoading.collectAsState()
     val message by clientViewModel.message.collectAsState()
     var showMessage by remember { mutableStateOf(false) }
 
@@ -41,23 +43,34 @@ fun ClientsListScreen(
             }) { Text("+") }
         }
     ) { padding ->
-        LazyColumn(modifier = Modifier.padding(padding)) {
-            items(clients) { client ->
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(client.client_title, style = MaterialTheme.typography.titleMedium)
-                        Text(client.client_address)
-                        Row {
-                            TextButton(onClick = {
-                                clientViewModel.clearMessage()
-                                clientViewModel.setEditingClient(client)
-                                onEditClient(client)
-                            }) { Text("Изменить") }
-                            TextButton(onClick = { clientViewModel.deleteClient(client) }) { Text("Удалить") }
+        if (isLoading) {
+            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        } else {
+            LazyColumn(modifier = Modifier.padding(padding)) {
+                items(clients) { client ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(client.client_title, style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                text = if (client.is_legal) "Юридическое лицо" else "Физическое лицо",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(client.client_address)
+                            Row {
+                                TextButton(onClick = {
+                                    clientViewModel.clearMessage()
+                                    clientViewModel.setEditingClient(client)
+                                    onEditClient(client)
+                                }) { Text("Изменить") }
+                                TextButton(onClick = { clientViewModel.deleteClient(client) }) { Text("Удалить") }
+                            }
                         }
                     }
                 }

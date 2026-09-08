@@ -13,47 +13,40 @@ import ru.bel.servicecenter.utils.LoggerService
 import ru.bel.servicecenter.utils.RoleCache
 import timber.log.Timber
 
-/**
- * ViewModel для управления категориями.
- * Предоставляет список категорий и CRUD-операции с проверкой прав.
- */
 class CategoryViewModel : ViewModel() {
 
-    // Список всех категорий
     private val _categories = MutableStateFlow<List<Category>>(emptyList())
     val categories: StateFlow<List<Category>> = _categories
 
-    // Текущая редактируемая категория
     private val _currentCategory = MutableStateFlow(Category(category_name = ""))
     val currentCategory: StateFlow<Category> = _currentCategory
 
-    // Ошибки валидации
     private val _errors = MutableStateFlow<Map<String, String?>>(emptyMap())
     val errors: StateFlow<Map<String, String?>> = _errors
 
-    // Сообщение пользователю
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
 
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = _isLoading
+
     var currentAuthUser: User? = null
 
-    /**
-     * Загружает категории из репозитория.
-     */
     fun loadCategories() {
         viewModelScope.launch {
+            _isLoading.value = true
+            _categories.value = emptyList()
             try {
                 _categories.value = RepositoryProvider.categoryRepo.getAllCategories()
             } catch (e: Exception) {
                 _message.value = "Ошибка загрузки категорий: ${e.message}"
                 Timber.e(e, "Ошибка загрузки категорий")
+            } finally {
+                _isLoading.value = false
             }
         }
     }
 
-    /**
-     * Сохраняет категорию (создание или обновление).
-     */
     fun saveCategory() {
         val category = _currentCategory.value
         val authUser = currentAuthUser ?: run {
@@ -95,9 +88,6 @@ class CategoryViewModel : ViewModel() {
         }
     }
 
-    /**
-     * Удаляет категорию (SoftDelete).
-     */
     fun deleteCategory(category: Category) {
         val authUser = currentAuthUser ?: run {
             _message.value = "Не выполнен вход"
@@ -120,31 +110,19 @@ class CategoryViewModel : ViewModel() {
         }
     }
 
-    /**
-     * Устанавливает категорию для редактирования.
-     */
     fun setEditingCategory(category: Category) {
         _currentCategory.value = category
         _errors.value = emptyMap()
     }
 
-    /**
-     * Обновляет название текущей категории.
-     */
     fun updateField(field: String, value: String) {
         _currentCategory.value = _currentCategory.value.copy(category_name = value)
     }
 
-    /**
-     * Очищает сообщение.
-     */
     fun clearMessage() {
         _message.value = null
     }
 
-    /**
-     * Проверяет права на изменение/удаление категории.
-     */
     private suspend fun canModify(user: User): Boolean {
         val role = RoleCache.get(user.role_id) ?: return false
         return role == "admin" || role == "engineer"
