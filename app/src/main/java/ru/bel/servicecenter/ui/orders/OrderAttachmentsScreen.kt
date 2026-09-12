@@ -20,6 +20,13 @@ import ru.bel.servicecenter.models.DraftAttachment
 import ru.bel.servicecenter.ui.components.ZoomableImageDialog
 import ru.bel.servicecenter.viewmodels.OrderViewModel
 import ru.bel.servicecenter.utils.ImageCompressor
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.ui.graphics.Color
 
 /**
  * Экран работы с приложениями к заказу.
@@ -35,23 +42,15 @@ fun OrderAttachmentsScreen(
 ) {
     val attachments by orderViewModel.draftAttachments.collectAsState()
     val context = LocalContext.current
-
-    // Состояние для просмотра изображения на весь экран
     var selectedImageUrl by remember { mutableStateOf<String?>(null) }
 
-    // Лаунчер выбора изображения из галереи
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         if (uri != null) {
-            // Сжимаем изображение перед добавлением в черновик
             val bytes = ImageCompressor.compress(context, uri)
             val fileName = "photo_${System.currentTimeMillis()}.jpg"
-            orderViewModel.addDraftAttachment(
-                uri = uri.toString(),
-                fileName = fileName,
-                fileBytes = bytes
-            )
+            orderViewModel.addDraftAttachment(uri.toString(), fileName, bytes)
         }
     }
 
@@ -59,82 +58,84 @@ fun OrderAttachmentsScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Приложения к заказу") },
-                navigationIcon = {
-                    TextButton(onClick = onCancel) { Text("Отмена") }
-                }
+                navigationIcon = { TextButton(onClick = onCancel) { Text("Отмена") } }
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = {
-                imagePickerLauncher.launch("image/*")
-            }) {
+            FloatingActionButton(onClick = { imagePickerLauncher.launch("image/*") }) {
                 Text("+")
             }
         },
         bottomBar = {
-            // Кнопки Сохранить и Отмена внизу экрана
             Row(
                 horizontalArrangement = Arrangement.SpaceEvenly,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
+                modifier = Modifier.fillMaxWidth().padding(16.dp)
             ) {
-                Button(onClick = onSaved) {
-                    Text("Сохранить")
-                }
+                Button(onClick = onSaved) { Text("Сохранить") }
                 Button(
                     onClick = onCancel,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.secondary
                     )
-                ) {
-                    Text("Отмена")
-                }
+                ) { Text("Отмена") }
             }
         }
     ) { padding ->
         if (attachments.isEmpty()) {
-            // Пустое состояние
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
+                modifier = Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center
             ) {
                 Text("Нет приложений")
             }
         } else {
-            // Сетка миниатюр
             LazyVerticalGrid(
                 columns = GridCells.Fixed(3),
                 contentPadding = PaddingValues(8.dp),
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
+                modifier = Modifier.fillMaxSize().padding(padding)
             ) {
-                items(attachments) { attachment ->
-                    Card(
+                items(attachments, key = { it.id }) { attachment ->
+                    Box(
                         modifier = Modifier
                             .aspectRatio(1f)
                             .padding(4.dp)
-                            .clickable {
-                                // Открываем полноэкранный просмотр
-                                selectedImageUrl = attachment.uri
-                            }
                     ) {
-                        Image(
-                            painter = rememberAsyncImagePainter(attachment.uri),
-                            contentDescription = attachment.fileName,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
+                        Card(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clickable { selectedImageUrl = attachment.uri }
+                        ) {
+                            Image(
+                                painter = rememberAsyncImagePainter(attachment.uri),
+                                contentDescription = attachment.fileName,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                        // Кнопка удаления в правом верхнем углу
+                        IconButton(
+                            onClick = { orderViewModel.removeDraftAttachment(attachment.id) },
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .size(28.dp)
+                                .background(
+                                    color = Color.Black.copy(alpha = 0.5f),
+                                    shape = CircleShape
+                                )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Удалить",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
                 }
             }
         }
     }
 
-    // Полноэкранный просмотр изображения
     if (selectedImageUrl != null) {
         ZoomableImageDialog(
             imageUrl = selectedImageUrl!!,

@@ -12,4 +12,5 @@ interface AttachmentRepository {
         fileBytes: ByteArray,
         contentType: String
     ): String  // возвращает публичный URL файла
+    suspend fun deleteFileFromStorage(bucket: String, path: String)
 }

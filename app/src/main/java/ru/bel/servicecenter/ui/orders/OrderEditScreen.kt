@@ -36,6 +36,7 @@ fun OrderEditScreen(
     val isAdminOrEngineer = orderViewModel.isAdminOrEngineer
     val services by orderViewModel.services.collectAsState()
     val draftAttachments by orderViewModel.draftAttachments.collectAsState()
+    val isLoadingAttachments by orderViewModel.isLoadingAttachments.collectAsState()
 
     var isSaving by remember { mutableStateOf(false) }
 
@@ -112,8 +113,13 @@ fun OrderEditScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             Button(onClick = onAttachments) {
-                Text("Вложения (${draftAttachments.size})")
+                if (isLoadingAttachments) {
+                    Text("Вложения (загрузка...)")
+                } else {
+                    Text("Вложения (${draftAttachments.size})")
+                }
             }
+            Spacer(modifier = Modifier.height(8.dp))
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(

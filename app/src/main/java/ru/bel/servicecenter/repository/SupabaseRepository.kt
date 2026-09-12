@@ -11,6 +11,9 @@ import java.io.OutputStreamWriter
 import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import io.github.jan.supabase.storage.storage
+import io.github.jan.supabase.storage.upload
+import io.ktor.http.ContentType
 
 class SupabaseRepository : ClientRepository, RoleRepository, UserRepository,
     CategoryRepository, ServiceRepository, PriceRepository, OrderRepository,
@@ -220,23 +223,37 @@ class SupabaseRepository : ClientRepository, RoleRepository, UserRepository,
         fileName: String,
         fileBytes: ByteArray,
         contentType: String
-    ): String {
-        val uploadUrl = "${BuildConfig.SUPABASE_URL}/storage/v1/object/$bucket/$fileName"
-        val connection = URL(uploadUrl).openConnection() as HttpURLConnection
-        connection.requestMethod = "POST"
-        connection.setRequestProperty("Authorization", "Bearer $apiKey")
-        connection.setRequestProperty("Content-Type", contentType)
-        connection.doOutput = true
-        connection.outputStream.use { it.write(fileBytes) }
+    ): String = withContext(Dispatchers.IO) {
+        val supabase = SupabaseClientProvider.client
+        val bucketApi = supabase.storage.from(bucket)
 
-        val responseCode = connection.responseCode
-        if (responseCode !in 200..299) {
-            val error = connection.errorStream?.bufferedReader()?.readText() ?: ""
-            connection.disconnect()
-            throw Exception("Ошибка загрузки файла: $responseCode $error")
+        LoggerService.log("SDK: загружаю $fileName (${fileBytes.size} байт)")
+
+        // Загружаем файл
+        bucketApi.upload(fileName, fileBytes) {
+            // upsert = true разрешает перезапись, если файл с таким именем уже есть
+            upsert = true
+            // Указываем MIME-тип
+            this.contentType = ContentType.parse(contentType)
         }
-        connection.disconnect()
-        return "${BuildConfig.SUPABASE_URL}/storage/v1/object/public/$bucket/$fileName"
+
+        LoggerService.log("SDK: файл загружен")
+
+        // Формируем публичную ссылку на файл
+        val publicUrl = bucketApi.publicUrl(fileName)
+        LoggerService.log("SDK: публичный URL = $publicUrl")
+        publicUrl
+    }
+
+    override suspend fun deleteFileFromStorage(bucket: String, path: String) = withContext(Dispatchers.IO) {
+        try {
+            val bucketApi = SupabaseClientProvider.client.storage.from(bucket)
+            bucketApi.delete(path)
+            LoggerService.log("Файл удалён из Storage: $bucket/$path")
+        } catch (e: Exception) {
+            LoggerService.log("Ошибка удаления файла из Storage: ${e.message}")
+            // не пробрасываем исключение, чтобы не сломать удаление записи из БД
+        }
     }
 
     // ------------------- Проверки БД -------------------

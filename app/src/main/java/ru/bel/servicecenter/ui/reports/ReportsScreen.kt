@@ -16,12 +16,13 @@ fun ReportsScreen(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text("Отчёты ($role)")
+        Text("Отчёты", style = MaterialTheme.typography.headlineSmall)
         Spacer(modifier = Modifier.height(16.dp))
-        Button(onClick = onBack) {
+        Text("Роль: $role")
+        Spacer(modifier = Modifier.weight(1f))
+        Button(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
             Text("Назад")
         }
     }

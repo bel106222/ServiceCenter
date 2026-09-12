@@ -21,6 +21,9 @@ android {
         // Переменные Supabase
         buildConfigField("String", "SUPABASE_URL", "\"${project.findProperty("SUPABASE_URL") ?: ""}\"")
         buildConfigField("String", "SUPABASE_KEY", "\"${project.findProperty("SUPABASE_KEY") ?: ""}\"")
+
+        // Ключ для Я.Диска
+        buildConfigField("String", "YANDEX_TOKEN", "\"${project.findProperty("YANDEX_TOKEN") ?: ""}\"")
     }
 
     buildFeatures {
@@ -67,10 +70,15 @@ dependencies {
     // Coil для загрузки изображений
     implementation("io.coil-kt:coil-compose:2.6.0")
 
-    // Ktor — HTTP-клиент для REST
-    implementation("io.ktor:ktor-client-android:2.3.3")
-    implementation("io.ktor:ktor-client-content-negotiation:2.3.3")
-    implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.3")
+    // Supabase Kotlin SDK (BOM для согласования версий)
+    implementation(platform("io.github.jan-tennert.supabase:bom:3.0.0"))
+
+    // Основной клиент и модуль Storage
+    implementation("io.github.jan-tennert.supabase:postgrest-kt") // для работы с таблицами (уже используется через REST, можно оставить)
+    implementation("io.github.jan-tennert.supabase:storage-kt")   // для загрузки файлов
+
+    // Ktor 3 — движок для Android
+    implementation("io.ktor:ktor-client-android:3.0.0")
 
     // bcrypt — хеширование паролей
     implementation("org.mindrot:jbcrypt:0.4")

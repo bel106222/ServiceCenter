@@ -14,8 +14,9 @@ object RepositoryProvider {
     val priceRepo: PriceRepository = repo
     val orderRepo: OrderRepository = repo
     val orderItemRepo: OrderItemRepository = repo
-
     val attachmentRepo: AttachmentRepository = repo
+
+    val yandexDiskRepo = YandexDiskRepository()
 
     suspend fun checkConnection() = repo.checkConnection()
     suspend fun checkAdminExists() = repo.checkAdminExists()
