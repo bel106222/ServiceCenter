@@ -50,7 +50,8 @@ fun NavGraphBuilder.authGraph(
                     navController.navigate("dashboard") {
                         popUpTo("select_client") { inclusive = true }
                     }
-                }
+                },
+                onBack = { navController.popBackStack() }
             )
         }
     }

@@ -10,13 +10,15 @@ import ru.bel.servicecenter.models.User
 import ru.bel.servicecenter.repository.RepositoryProvider
 import ru.bel.servicecenter.utils.LoggerService
 import ru.bel.servicecenter.utils.RoleCache
-import ru.bel.servicecenter.utils.MessageBus
 import timber.log.Timber
 
 /**
  * ViewModel для аутентификации.
  * Хранит текущего авторизованного пользователя и его роль.
  * Выполняет вход, регистрацию и выход.
+ *
+ * Ошибки входа/регистрации показываются через [_error] — прямо под формой на экране.
+ * Глобальный MessageBus здесь не используется, чтобы не дублировать сообщения.
  */
 class AuthViewModel : ViewModel() {
 
@@ -47,12 +49,12 @@ class AuthViewModel : ViewModel() {
                     _error.value = null
                     LoggerService.log("Успешный вход: ${user.user_email}, роль: $role")
                 } else {
+                    // Только _error — Snackbar здесь не нужен.
                     _error.value = "Неверный email или пароль"
-                    MessageBus.show("Неверный email или пароль")
                 }
             } catch (e: Exception) {
                 _error.value = "Ошибка входа: ${e.message}"
-                MessageBus.show("Ошибка входа: ${e.message}")
+                Timber.e(e, "Ошибка входа")
             }
         }
     }
@@ -68,7 +70,6 @@ class AuthViewModel : ViewModel() {
                 val existing = RepositoryProvider.userRepo.getUserByEmail(email)
                 if (existing != null) {
                     _error.value = "Пользователь с таким email уже существует"
-                    MessageBus.show("Пользователь с таким email уже существует")
                     return@launch
                 }
 

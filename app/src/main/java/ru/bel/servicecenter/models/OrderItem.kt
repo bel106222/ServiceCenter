@@ -12,6 +12,6 @@ data class OrderItem(
     val orderitem_quantity: Int = 1,
     val orderitem_cost: Float = 0f,
     val is_online: Boolean = false,
-    val created_at: String = "",
+    val created_at: String = java.time.LocalDateTime.now().toString(),
     val deleted_at: String? = null,
 )

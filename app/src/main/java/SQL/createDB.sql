@@ -5,8 +5,8 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TABLE IF NOT EXISTS public.roles (
                                             id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     role_name TEXT UNIQUE NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT now(),
-    deleted_at TIMESTAMPTZ
+    created_at TIMESTAMPT DEFAULT now(),
+    deleted_at TIMESTAMPT
     );
 
 -- Таблица клиентов
@@ -16,8 +16,8 @@ CREATE TABLE IF NOT EXISTS public.clients (
     client_address TEXT,
     client_details TEXT,
     is_legal BOOLEAN DEFAULT false,
-    created_at TIMESTAMPTZ DEFAULT now(),
-    deleted_at TIMESTAMPTZ
+    created_at TIMESTAMPT DEFAULT now(),
+    deleted_at TIMESTAMPT
     );
 
 -- Таблица пользователей
@@ -29,16 +29,16 @@ CREATE TABLE IF NOT EXISTS public.users (
     user_password TEXT NOT NULL,
     client_id UUID REFERENCES public.clients(id),
     role_id UUID NOT NULL REFERENCES public.roles(id),
-    created_at TIMESTAMPTZ DEFAULT now(),
-    deleted_at TIMESTAMPTZ
+    created_at TIMESTAMPT DEFAULT now(),
+    deleted_at TIMESTAMPT
     );
 
 -- Таблица категорий
 CREATE TABLE IF NOT EXISTS public.categories (
                                                  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     category_name TEXT UNIQUE NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT now(),
-    deleted_at TIMESTAMPTZ
+    created_at TIMESTAMPT DEFAULT now(),
+    deleted_at TIMESTAMPT
     );
 
 -- Таблица услуг
@@ -48,8 +48,8 @@ CREATE TABLE IF NOT EXISTS public.services (
     service_description TEXT,
     category_id UUID NOT NULL REFERENCES public.categories(id),
     is_fixprice BOOLEAN DEFAULT false,
-    created_at TIMESTAMPTZ DEFAULT now(),
-    deleted_at TIMESTAMPTZ
+    created_at TIMESTAMPT DEFAULT now(),
+    deleted_at TIMESTAMPT
     );
 
 -- Таблица цен
@@ -58,8 +58,8 @@ CREATE TABLE IF NOT EXISTS public.prices (
     service_id UUID NOT NULL REFERENCES public.services(id),
     service_cost REAL NOT NULL,
     is_time BOOLEAN DEFAULT false,
-    created_at TIMESTAMPTZ DEFAULT now(),
-    deleted_at TIMESTAMPTZ
+    created_at TIMESTAMPT DEFAULT now(),
+    deleted_at TIMESTAMPT
     );
 
 -- Таблица заказов
@@ -71,8 +71,8 @@ CREATE TABLE IF NOT EXISTS public.orders (
     order_sum REAL DEFAULT 0,
     is_completed BOOLEAN DEFAULT false,
     is_time BOOLEAN DEFAULT false,
-    created_at TIMESTAMPTZ DEFAULT now(),
-    deleted_at TIMESTAMPTZ
+    created_at TIMESTAMPT DEFAULT now(),
+    deleted_at TIMESTAMPT
     );
 
 -- Таблица позиций заказа
@@ -84,8 +84,8 @@ CREATE TABLE IF NOT EXISTS public.order_items (
     orderitem_quantity INT DEFAULT 1,
     orderitem_cost REAL DEFAULT 0,
     is_online BOOLEAN DEFAULT false,
-    created_at TIMESTAMPTZ DEFAULT now(),
-    deleted_at TIMESTAMPTZ
+    created_at TIMESTAMPT DEFAULT now(),
+    deleted_at TIMESTAMPT
     );
 
 -- Таблица для хранения приложений к заказам
@@ -94,6 +94,6 @@ CREATE TABLE IF NOT EXISTS public.attachments (
     order_id UUID NOT NULL REFERENCES public.orders(id) ON DELETE CASCADE,
     filename TEXT NOT NULL,
     url TEXT NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT now(),
-    deleted_at TIMESTAMPTZ
+    created_at TIMESTAMPT DEFAULT now(),
+    deleted_at TIMESTAMPT
     );

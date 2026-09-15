@@ -96,13 +96,4 @@ fun NavGraphBuilder.dashboardGraph(
             DashboardScreen(items = items)
         }
     }
-
-    composable("reports") {
-        val roleState by authViewModel.userRole.collectAsState()
-        val roleString: String = roleState ?: "unknown"
-        ReportsScreen(
-            role = roleString,
-            onBack = { navController.popBackStack() }
-        )
-    }
 }

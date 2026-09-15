@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,6 +19,18 @@ fun AdminDatabaseScreen(
 ) {
     var password by remember { mutableStateOf("") }
     var isClearing by remember { mutableStateOf(false) }
+
+    // Флаг «операция завершена успешно» из ViewModel.
+    // Когда он станет true — сбрасываем индикатор и закрываем экран.
+    val operationCompleted by adminViewModel.operationCompleted.collectAsState()
+
+    LaunchedEffect(operationCompleted) {
+        if (operationCompleted) {
+            isClearing = false
+            adminViewModel.resetOperationCompleted()
+            onBack()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -49,9 +60,10 @@ fun AdminDatabaseScreen(
 
             Button(
                 onClick = {
+                    // Поднимаем флаг. Сбрасывать его здесь НЕЛЬЗЯ —
+                    // сброс произойдёт в LaunchedEffect, когда операция реально завершится.
                     isClearing = true
                     adminViewModel.clearAndReseedDatabase(password)
-                    isClearing = false
                 },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = password.length >= 6 && !isClearing,
@@ -60,6 +72,7 @@ fun AdminDatabaseScreen(
                 )
             ) {
                 if (isClearing) {
+                    // Пока идёт операция — показываем крутилку вместо иконки.
                     CircularProgressIndicator(
                         modifier = Modifier.size(20.dp),
                         color = MaterialTheme.colorScheme.onError

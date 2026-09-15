@@ -4,6 +4,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,7 +25,8 @@ import ru.bel.servicecenter.viewmodels.AuthViewModel
 fun SelectClientScreen(
     currentUser: User,
     authViewModel: AuthViewModel,
-    onClientBound: () -> Unit
+    onClientBound: () -> Unit,
+    onBack: () -> Unit
 ) {
     val coroutineScope = rememberCoroutineScope()
 
@@ -29,6 +34,9 @@ fun SelectClientScreen(
     var clients by remember { mutableStateOf<List<Client>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var message by remember { mutableStateOf<String?>(null) }
+
+    // Строка поиска по названию клиента
+    var searchQuery by remember { mutableStateOf("") }
 
     // Состояние формы создания нового клиента
     var showCreateForm by remember { mutableStateOf(false) }
@@ -49,10 +57,36 @@ fun SelectClientScreen(
         }
     }
 
+    // Отфильтрованный список — ищем по названию, без учёта регистра
+    val filteredClients = remember(clients, searchQuery) {
+        val query = searchQuery.trim()
+        if (query.isEmpty()) {
+            clients
+        } else {
+            clients.filter { it.client_title.contains(query, ignoreCase = true) }
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Выбор клиента") }
+                title = { Text("Выбор клиента") },
+                navigationIcon = {
+                    IconButton(onClick = {
+                        // Если открыта форма создания — стрелка закрывает её.
+                        // Если показан список — стрелка возвращает на предыдущий экран.
+                        if (showCreateForm) {
+                            showCreateForm = false
+                        } else {
+                            onBack()
+                        }
+                    }) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Назад"
+                        )
+                    }
+                }
             )
         }
     ) { padding ->
@@ -63,7 +97,9 @@ fun SelectClientScreen(
                 .padding(16.dp)
         ) {
             if (showCreateForm) {
-                // ---------- Форма создания нового клиента ----------
+                // ==========================================
+                // Форма создания нового клиента
+                // ==========================================
                 Text("Новый клиент", style = MaterialTheme.typography.headlineSmall)
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -151,46 +187,115 @@ fun SelectClientScreen(
                         }
                         Spacer(modifier = Modifier.width(16.dp))
                         OutlinedButton(onClick = { showCreateForm = false }) {
-                            Text("Назад")
+                            Text("Отмена")
                         }
                     }
                 }
             } else {
-                // ---------- Список существующих клиентов ----------
+                // ==========================================
+                // Список существующих клиентов
+                // ==========================================
                 Text("Выберите существующего клиента", style = MaterialTheme.typography.titleMedium)
                 Spacer(modifier = Modifier.height(8.dp))
 
-                if (isLoading) {
-                    Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
-                    }
-                } else if (clients.isEmpty()) {
-                    Text("Клиентов пока нет")
-                } else {
-                    LazyColumn(modifier = Modifier.weight(1f)) {
-                        items(clients) { client ->
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp)
-                                    .clickable {
-                                        coroutineScope.launch {
-                                            try {
-                                                val updatedUser = currentUser.copy(client_id = client.id)
-                                                RepositoryProvider.userRepo.updateUser(updatedUser)
-                                                authViewModel.updateLoggedUser(updatedUser)
-                                                LoggerService.log("Привязан клиент: ${client.client_title}")
-                                                onClientBound()
-                                            } catch (e: Exception) {
-                                                message = "Ошибка привязки: ${e.message}"
+                // Поле поиска над списком
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = { Text("Поиск") },
+                    placeholder = { Text("Название клиента") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Clear, contentDescription = "Очистить")
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Область списка — занимает всё свободное место
+                Box(modifier = Modifier.weight(1f)) {
+                    when {
+                        isLoading -> Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) { CircularProgressIndicator() }
+
+                        // Клиентов вообще нет
+                        clients.isEmpty() -> Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "Клиентов пока нет",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        // Клиенты есть, но поиск ничего не нашёл
+                        filteredClients.isEmpty() -> Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    Icons.Default.Search, null,
+                                    Modifier.size(56.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(Modifier.height(12.dp))
+                                Text(
+                                    "Ничего не найдено",
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    "Попробуйте изменить запрос",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        // Список клиентов
+                        else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
+                            items(filteredClients, key = { it.id }) { client ->
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp)
+                                        .clickable {
+                                            coroutineScope.launch {
+                                                try {
+                                                    val updatedUser = currentUser.copy(client_id = client.id)
+                                                    RepositoryProvider.userRepo.updateUser(updatedUser)
+                                                    authViewModel.updateLoggedUser(updatedUser)
+                                                    LoggerService.log("Привязан клиент: ${client.client_title}")
+                                                    onClientBound()
+                                                } catch (e: Exception) {
+                                                    message = "Ошибка привязки: ${e.message}"
+                                                }
                                             }
                                         }
-                                    }
-                            ) {
-                                Column(modifier = Modifier.padding(16.dp)) {
-                                    Text(client.client_title, style = MaterialTheme.typography.titleMedium)
-                                    if (client.client_address.isNotBlank()) {
-                                        Text(client.client_address)
+                                ) {
+                                    Column(modifier = Modifier.padding(16.dp)) {
+                                        Text(
+                                            client.client_title,
+                                            style = MaterialTheme.typography.titleMedium
+                                        )
+                                        if (client.client_address.isNotBlank()) {
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                client.client_address,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -203,6 +308,7 @@ fun SelectClientScreen(
                 Button(
                     onClick = {
                         newTitle = currentUser.user_name
+                        searchQuery = ""
                         showCreateForm = true
                     },
                     modifier = Modifier.fillMaxWidth()

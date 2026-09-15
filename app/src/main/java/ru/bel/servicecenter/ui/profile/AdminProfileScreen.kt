@@ -1,6 +1,10 @@
 package ru.bel.servicecenter.ui.profile
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -9,6 +13,7 @@ import ru.bel.servicecenter.models.User
 import ru.bel.servicecenter.rules.ValidationRules
 import ru.bel.servicecenter.viewmodels.UserViewModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AdminProfileScreen(
     currentUser: User,
@@ -27,73 +32,105 @@ fun AdminProfileScreen(
 
     var message by remember { mutableStateOf<String?>(null) }
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Профиль администратора", style = MaterialTheme.typography.headlineSmall)
-        Spacer(modifier = Modifier.height(8.dp))
-        Text("Привязанный клиент: Сервисный центр", style = MaterialTheme.typography.bodyMedium)
-        Spacer(modifier = Modifier.height(16.dp))
+    // Готовим ViewModel к редактированию именно этого пользователя
+    LaunchedEffect(currentUser) {
+        userViewModel.setEditingUser(currentUser)
+    }
 
-        OutlinedTextField(
-            value = name,
-            onValueChange = { name = it; nameError = ValidationRules.validateRequired(it, "Имя") },
-            label = { Text("Имя") },
-            isError = nameError != null,
-            supportingText = { nameError?.let { Text(it) } },
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-
-        OutlinedTextField(
-            value = email,
-            onValueChange = { email = it; emailError = ValidationRules.validateEmail(it) },
-            label = { Text("Email") },
-            isError = emailError != null,
-            supportingText = { emailError?.let { Text(it) } },
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-
-        OutlinedTextField(
-            value = phone,
-            onValueChange = { phone = it; phoneError = ValidationRules.validatePhone(it) },
-            label = { Text("Телефон") },
-            isError = phoneError != null,
-            supportingText = { phoneError?.let { Text(it) } },
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-
-        OutlinedTextField(
-            value = password,
-            onValueChange = { password = it; passwordError = if (it.isNotEmpty()) ValidationRules.validatePassword(it) else null },
-            label = { Text("Новый пароль (оставьте пустым, чтобы не менять)") },
-            isError = passwordError != null,
-            supportingText = { passwordError?.let { Text(it) } },
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Button(
-            onClick = {
-                nameError = ValidationRules.validateRequired(name, "Имя")
-                emailError = ValidationRules.validateEmail(email)
-                phoneError = ValidationRules.validatePhone(phone)
-                if (password.isNotEmpty()) passwordError = ValidationRules.validatePassword(password)
-                if (listOf(nameError, emailError, phoneError, passwordError).all { it == null }) {
-                    userViewModel.updateField("name", name)
-                    userViewModel.updateField("email", email)
-                    userViewModel.updateField("phone", phone)
-                    if (password.isNotEmpty()) userViewModel.updateField("password", password)
-                    userViewModel.saveUser()
-                    message = "Профиль обновлён"
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Профиль администратора") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Назад"
+                        )
+                    }
                 }
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) { Text("Сохранить") }
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState())
+        ) {
+            Text(
+                "Привязанный клиент: Сервисный центр",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(16.dp))
 
-        message?.let { Spacer(modifier = Modifier.height(8.dp)); Text(it) }
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it; nameError = ValidationRules.validateRequired(it, "Имя") },
+                label = { Text("Имя") },
+                isError = nameError != null,
+                supportingText = { nameError?.let { Text(it) } },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(8.dp))
 
-        Spacer(modifier = Modifier.weight(1f))
-        Button(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Назад") }
+            OutlinedTextField(
+                value = email,
+                onValueChange = { email = it; emailError = ValidationRules.validateEmail(it) },
+                label = { Text("Email") },
+                isError = emailError != null,
+                supportingText = { emailError?.let { Text(it) } },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedTextField(
+                value = phone,
+                onValueChange = { phone = it; phoneError = ValidationRules.validatePhone(it) },
+                label = { Text("Телефон") },
+                isError = phoneError != null,
+                supportingText = { phoneError?.let { Text(it) } },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedTextField(
+                value = password,
+                onValueChange = {
+                    password = it
+                    passwordError = if (it.isNotEmpty()) ValidationRules.validatePassword(it) else null
+                },
+                label = { Text("Новый пароль (оставьте пустым, чтобы не менять)") },
+                isError = passwordError != null,
+                supportingText = { passwordError?.let { Text(it) } },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(
+                onClick = {
+                    nameError = ValidationRules.validateRequired(name, "Имя")
+                    emailError = ValidationRules.validateEmail(email)
+                    phoneError = ValidationRules.validatePhone(phone)
+                    if (password.isNotEmpty()) passwordError = ValidationRules.validatePassword(password)
+                    if (listOf(nameError, emailError, phoneError, passwordError).all { it == null }) {
+                        userViewModel.updateField("name", name)
+                        userViewModel.updateField("email", email)
+                        userViewModel.updateField("phone", phone)
+                        if (password.isNotEmpty()) userViewModel.updateField("password", password)
+                        userViewModel.saveUser()
+                        message = "Профиль обновлён"
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Сохранить") }
+
+            message?.let {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(it)
+            }
+        }
     }
 }

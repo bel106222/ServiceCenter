@@ -1,5 +1,6 @@
 package ru.bel.servicecenter.ui.auth
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -15,10 +16,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import ru.bel.servicecenter.R
 import ru.bel.servicecenter.ui.theme.ThemeManager
 import ru.bel.servicecenter.viewmodels.AuthViewModel
 
@@ -49,6 +52,14 @@ fun LoginScreen(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // Логотип приложения над заголовком
+            Image(
+                painter = painterResource(id = R.drawable.ic_launcher_round),
+                contentDescription = "Логотип",
+                modifier = Modifier.size(120.dp)
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+
             Text(
                 "Вход в систему",
                 style = MaterialTheme.typography.headlineMedium

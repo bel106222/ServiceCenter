@@ -142,7 +142,12 @@ class SupabaseRepository : ClientRepository, RoleRepository, UserRepository,
     // ------------------- Role -------------------
     override suspend fun createRole(role: Role) = post("roles", role)
     override suspend fun getRoleByName(name: String): Role? =
-        get<Role>("roles", "select" to "*", "role_name" to "eq.$name").firstOrNull()
+        get<Role>(
+            "roles",
+            "select" to "*",
+            "role_name" to "eq.$name",
+            "deleted_at" to "is.null"
+        ).firstOrNull()
 
     // ------------------- User -------------------
     override suspend fun createUser(user: User) = post("users", user)
@@ -151,7 +156,12 @@ class SupabaseRepository : ClientRepository, RoleRepository, UserRepository,
     override suspend fun getUsersByClientId(clientId: String): List<User> =
         get("users", "select" to "*", "client_id" to "eq.$clientId", "deleted_at" to "is.null")
     override suspend fun getUserByEmail(email: String): User? =
-        get<User>("users", "select" to "*", "user_email" to "eq.$email").firstOrNull()
+        get<User>(
+            "users",
+            "select" to "*",
+            "user_email" to "eq.$email",
+            "deleted_at" to "is.null"
+        ).firstOrNull()
     override suspend fun getAllUsers(): List<User> =
         get("users", "select" to "*", "deleted_at" to "is.null")
 
@@ -162,7 +172,12 @@ class SupabaseRepository : ClientRepository, RoleRepository, UserRepository,
     override suspend fun getAllCategories(): List<Category> =
         get("categories", "select" to "*", "deleted_at" to "is.null")
     override suspend fun getCategoryByName(name: String): Category? =
-        get<Category>("categories", "select" to "*", "category_name" to "eq.$name").firstOrNull()
+        get<Category>(
+            "categories",
+            "select" to "*",
+            "category_name" to "eq.$name",
+            "deleted_at" to "is.null"
+        ).firstOrNull()
 
     // ------------------- Service -------------------
     override suspend fun createService(service: Service) = post("services", service)
@@ -173,7 +188,12 @@ class SupabaseRepository : ClientRepository, RoleRepository, UserRepository,
     override suspend fun getAllServices(): List<Service> =
         get("services", "select" to "*", "deleted_at" to "is.null")
     override suspend fun getServiceByName(name: String): Service? =
-        get<Service>("services", "select" to "*", "service_name" to "eq.$name").firstOrNull()
+        get<Service>(
+            "services",
+            "select" to "*",
+            "service_name" to "eq.$name",
+            "deleted_at" to "is.null"
+        ).firstOrNull()
 
     // ------------------- Price -------------------
     override suspend fun createPrice(price: Price) = post("prices", price)
@@ -191,11 +211,21 @@ class SupabaseRepository : ClientRepository, RoleRepository, UserRepository,
     override suspend fun getOrderByUserId(userId: String): List<Order> =
         get("orders", "select" to "*", "user_id" to "eq.$userId", "deleted_at" to "is.null")
     override suspend fun getOrderByOrderNumber(orderNumber: String): Order? =
-        get<Order>("orders", "select" to "*", "order_number" to "eq.$orderNumber").firstOrNull()
+        get<Order>(
+            "orders",
+            "select" to "*",
+            "order_number" to "eq.$orderNumber",
+            "deleted_at" to "is.null"
+        ).firstOrNull()
     override suspend fun getAllOrders(): List<Order> =
         get("orders", "select" to "*", "deleted_at" to "is.null")
     override suspend fun getOrderById(orderId: String): Order? =
-        get<Order>("orders", "select" to "*", "id" to "eq.$orderId").firstOrNull()
+        get<Order>(
+            "orders",
+            "select" to "*",
+            "id" to "eq.$orderId",
+            "deleted_at" to "is.null"
+        ).firstOrNull()
     override suspend fun getOrdersWithItems(): List<OrderWithItems> =
         get<OrderWithItems>(
             "orders",

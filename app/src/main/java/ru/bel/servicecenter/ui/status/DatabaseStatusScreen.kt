@@ -1,5 +1,6 @@
 package ru.bel.servicecenter.ui.status
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
@@ -10,7 +11,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import ru.bel.servicecenter.R
 
 @Composable
 fun DatabaseStatusScreen(
@@ -21,15 +24,24 @@ fun DatabaseStatusScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .statusBarsPadding()
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
+        // Логотип приложения над заголовком
+        Image(
+            painter = painterResource(id = R.drawable.ic_launcher_round),
+            contentDescription = "Логотип",
+            modifier = Modifier.size(120.dp)
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+
         Text("Сервисный центр", style = MaterialTheme.typography.headlineLarge)
         Spacer(modifier = Modifier.height(24.dp))
 
         Text(
-            "Статус базы данных",
+            "Статус базы данных:",
             style = MaterialTheme.typography.titleMedium
         )
         Spacer(modifier = Modifier.height(24.dp))

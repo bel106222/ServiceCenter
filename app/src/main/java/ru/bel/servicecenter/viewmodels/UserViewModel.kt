@@ -58,7 +58,7 @@ class UserViewModel : ViewModel() {
         }
 
         viewModelScope.launch {
-            if (!canModify(authUser, user.id.isEmpty())) {
+            if (!canModify(authUser, false, user.id)) {
                 MessageBus.show("Недостаточно прав")
                 return@launch
             }
@@ -88,12 +88,20 @@ class UserViewModel : ViewModel() {
 
                 var updatedUser = user
                 if (user.user_password.isNotEmpty() && user.user_password != "***") {
+                    // Пользователь ввёл новый пароль — хешируем и сохраняем.
                     val hashed = BCrypt.hashpw(user.user_password, BCrypt.gensalt())
                     updatedUser = user.copy(user_password = hashed)
                 } else if (user.id.isNotEmpty()) {
+                    // Пароль не меняется. Нужно найти оригинал, чтобы не отправить в БД "***".
                     val original = _users.value.find { it.id == user.id }
+                        ?: RepositoryProvider.userRepo.getAllUsers().find { it.id == user.id }
+
                     if (original != null) {
                         updatedUser = user.copy(user_password = original.user_password)
+                    } else {
+                        // Не нашли пользователя — не рискуем затирать пароль.
+                        MessageBus.show("Не удалось получить исходные данные профиля")
+                        return@launch
                     }
                 }
 
@@ -121,7 +129,7 @@ class UserViewModel : ViewModel() {
             return
         }
         viewModelScope.launch {
-            if (!canModify(authUser, false)) {
+            if (!canModify(authUser, user.id.isEmpty(), user.id)) {
                 MessageBus.show("Недостаточно прав")
                 return@launch
             }
@@ -160,11 +168,23 @@ class UserViewModel : ViewModel() {
         _operationCompleted.value = false
     }
 
-    private suspend fun canModify(user: User, isNew: Boolean): Boolean {
-        val role = RoleCache.get(user.role_id) ?: return false
+    /**
+     * Проверяет, имеет ли право [editor] редактировать пользователя [targetUserId].
+     * [isNew] — true, если создаём нового пользователя.
+     * [targetUserId] — id редактируемого пользователя (null при создании).
+     */
+    private suspend fun canModify(
+        editor: User,
+        isNew: Boolean,
+        targetUserId: String? = null
+    ): Boolean {
+        // Редактируем свой собственный профиль — разрешено всем ролям.
+        if (!isNew && targetUserId != null && editor.id == targetUserId) return true
+
+        val role = RoleCache.get(editor.role_id) ?: return false
         return when (role) {
             "admin" -> true
-            "engineer" -> isNew || user.client_id == null
+            "engineer" -> isNew || editor.client_id == null
             else -> false
         }
     }

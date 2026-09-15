@@ -20,6 +20,7 @@ import ru.bel.servicecenter.utils.MessageBus
 import ru.bel.servicecenter.utils.RoleCache
 import ru.bel.servicecenter.utils.StatusTree
 import ru.bel.servicecenter.viewmodels.*
+import ru.bel.servicecenter.viewmodels.ReportsViewModel
 import timber.log.Timber
 
 @Composable
@@ -54,6 +55,7 @@ fun AppNavigation(onExit: () -> Unit) {
     val orderViewModel = remember { OrderViewModel() }
     val orderItemViewModel = remember { OrderItemViewModel() }
     orderItemViewModel.orderViewModel = orderViewModel
+    val reportsViewModel = remember { ReportsViewModel() }
 
     var connectionOk by remember { mutableStateOf<Boolean?>(null) }
     var integrityOk by remember { mutableStateOf<Boolean?>(null) }
@@ -110,6 +112,8 @@ fun AppNavigation(onExit: () -> Unit) {
                     priceViewModel.currentAuthUser = user
                     userViewModel.currentAuthUser = user
                     orderItemViewModel.currentAuthUser = user
+                    adminViewModel.currentAuthUser = user
+                    reportsViewModel.currentAuthUser = user
 
                     LoggerService.log("Навигация: роль=$role, client_id=${user.client_id}")
 
@@ -154,6 +158,7 @@ fun AppNavigation(onExit: () -> Unit) {
                     ordersGraph(navController, orderViewModel, orderItemViewModel)
                     usersGraph(navController, userViewModel)
                     adminGraph(navController, adminViewModel)
+                    reportsGraph(navController, authViewModel, reportsViewModel)
                 }
             }
         }

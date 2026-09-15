@@ -244,7 +244,6 @@ class OrderViewModel : ViewModel() {
     // ============================================================
     //                    СОХРАНЕНИЕ ЗАКАЗА
     // ============================================================
-
     fun saveOrder() {
         val orderWithItems = _currentOrderWithItems.value ?: return
         val authUser = currentAuthUser ?: run {
@@ -263,7 +262,9 @@ class OrderViewModel : ViewModel() {
             val currentIds = currentItems.map { it.id }.toSet()
 
             try {
-                // 1. Сохраняем заказ
+                // ========================================================
+                // ШАГ 1. Сохраняем заказ в БД
+                // ========================================================
                 val order = Order(
                     id = orderWithItems.id,
                     order_number = orderWithItems.order_number,
@@ -277,21 +278,22 @@ class OrderViewModel : ViewModel() {
                 )
                 if (isNewOrder) {
                     RepositoryProvider.orderRepo.createOrder(order)
-                    MessageBus.show("Заказ создан")
-                    LoggerService.log("Заказ создан: ${order.order_number}")
                 } else {
                     RepositoryProvider.orderRepo.updateOrder(order)
-                    MessageBus.show("Заказ обновлён")
-                    LoggerService.log("Заказ обновлён: ${order.order_number}")
                 }
 
-                // 2. Удаляем позиции, которых больше нет
+                // ========================================================
+                // ШАГ 2. Удаляем позиции, которых больше нет в черновике
+                // ========================================================
                 originalItems.forEach { original ->
                     if (original.id !in currentIds) {
                         RepositoryProvider.orderItemRepo.deleteOrderItem(original)
                     }
                 }
-                // 3. Создаём/обновляем позиции
+
+                // ========================================================
+                // ШАГ 3. Создаём/обновляем позиции
+                // ========================================================
                 currentItems.forEach { item ->
                     if (item.id !in originalIds) {
                         RepositoryProvider.orderItemRepo.createOrderItem(item)
@@ -300,7 +302,9 @@ class OrderViewModel : ViewModel() {
                     }
                 }
 
-                // 4. Вложения: удаляем отсутствующие
+                // ========================================================
+                // ШАГ 4. Вложения: удаляем те, что убрал пользователь
+                // ========================================================
                 val currentAttachments = _draftAttachments.value
                 val originalAttachments = RepositoryProvider.attachmentRepo.getAttachmentsByOrderId(order.id)
                 val currentAttachmentIds = currentAttachments.map { it.id }.toSet()
@@ -316,7 +320,9 @@ class OrderViewModel : ViewModel() {
                     }
                 }
 
-                // 5. Вложения: загружаем новые
+                // ========================================================
+                // ШАГ 5. Вложения: загружаем новые
+                // ========================================================
                 for (draft in currentAttachments) {
                     if (draft.isNew) {
                         val fileBytes = draft.fileBytes
@@ -335,33 +341,53 @@ class OrderViewModel : ViewModel() {
                     }
                 }
 
-                // 6. Обновляем список и текущий заказ
-                loadOrders()
-                val updated = _ordersWithItems.value.find { it.id == order.id }
-                if (updated != null) {
-                    _currentOrderWithItems.value = updated
-                    originalItems = updated.order_items
-                }
-
-                // 7. Обновляем черновик вложений
-                val freshAttachments = RepositoryProvider.attachmentRepo.getAttachmentsByOrderId(order.id)
-                _draftAttachments.value = freshAttachments.mapNotNull { attachment ->
-                    try {
-                        val url = RepositoryProvider.yandexDiskRepo.getDownloadUrl(attachment.url)
-                        DraftAttachment(
-                            id = attachment.id,
-                            uri = url,
-                            fileName = attachment.filename,
-                            isNew = false,
-                            fileBytes = null
-                        )
-                    } catch (e: Exception) {
-                        LoggerService.log("Ошибка перезагрузки вложения: ${e.message}")
-                        null
-                    }
-                }
-
+                // ========================================================
+                // ШАГ 6. Всё записано в БД. Сигналим успех.
+                //         Сначала показываем сообщение, затем помечаем операцию
+                //         завершённой — экран начнёт закрываться сразу.
+                // ========================================================
+                MessageBus.show(if (isNewOrder) "Заказ создан" else "Заказ обновлён")
+                LoggerService.log(
+                    if (isNewOrder) "Заказ создан: ${order.order_number}"
+                    else "Заказ обновлён: ${order.order_number}"
+                )
                 _operationCompleted.value = true
+
+                // ========================================================
+                // ШАГ 7. Обновляем кэш в фоне.
+                //         Этот блок выполняется ПОСЛЕ сигнала об успехе.
+                //         Если он упадёт — сохранение всё равно считается успешным,
+                //         потому что заказ уже в БД. Поэтому свой try/catch.
+                // ========================================================
+                try {
+                    loadOrders()
+                    val updated = _ordersWithItems.value.find { it.id == order.id }
+                    if (updated != null) {
+                        _currentOrderWithItems.value = updated
+                        originalItems = updated.order_items
+                    }
+
+                    val freshAttachments = RepositoryProvider.attachmentRepo.getAttachmentsByOrderId(order.id)
+                    _draftAttachments.value = freshAttachments.mapNotNull { attachment ->
+                        try {
+                            val url = RepositoryProvider.yandexDiskRepo.getDownloadUrl(attachment.url)
+                            DraftAttachment(
+                                id = attachment.id,
+                                uri = url,
+                                fileName = attachment.filename,
+                                isNew = false,
+                                fileBytes = null
+                            )
+                        } catch (e: Exception) {
+                            LoggerService.log("Ошибка перезагрузки вложения: ${e.message}")
+                            null
+                        }
+                    }
+                } catch (refreshEx: Exception) {
+                    // Кэш не обновился — не критично, заказ уже сохранён.
+                    Timber.w(refreshEx, "Ошибка обновления кэша после сохранения заказа")
+                }
+
             } catch (e: Exception) {
                 MessageBus.show("Ошибка сохранения: ${e.message}")
                 Timber.e(e, "Ошибка сохранения заказа")
