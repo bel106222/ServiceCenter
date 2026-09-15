@@ -14,6 +14,7 @@ fun DashboardScreen(items: List<DashboardItem>) {
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .statusBarsPadding()
             .padding(16.dp)
     ) {
         Text("Главное меню", style = MaterialTheme.typography.headlineSmall)

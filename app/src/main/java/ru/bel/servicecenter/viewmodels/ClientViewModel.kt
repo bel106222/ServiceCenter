@@ -10,38 +10,44 @@ import ru.bel.servicecenter.models.User
 import ru.bel.servicecenter.repository.RepositoryProvider
 import ru.bel.servicecenter.rules.ValidationRules
 import ru.bel.servicecenter.utils.LoggerService
+import ru.bel.servicecenter.utils.MessageBus
 import ru.bel.servicecenter.utils.RoleCache
 import timber.log.Timber
 
 class ClientViewModel : ViewModel() {
 
+    // Список клиентов
     private val _clients = MutableStateFlow<List<Client>>(emptyList())
     val clients: StateFlow<List<Client>> = _clients
 
+    // Текущий редактируемый клиент
     private val _currentClient = MutableStateFlow(
         Client(client_title = "", client_address = "", client_details = "", is_legal = false)
     )
     val currentClient: StateFlow<Client> = _currentClient
 
+    // Ошибки валидации по полям
     private val _errors = MutableStateFlow<Map<String, String?>>(emptyMap())
     val errors: StateFlow<Map<String, String?>> = _errors
 
-    private val _message = MutableStateFlow<String?>(null)
-    val message: StateFlow<String?> = _message
-
+    // Флаг загрузки
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
+
+    // Флаг "операция успешно завершена" — для закрытия экрана
+    private val _operationCompleted = MutableStateFlow(false)
+    val operationCompleted: StateFlow<Boolean> = _operationCompleted
 
     var currentAuthUser: User? = null
 
     fun loadClients() {
         viewModelScope.launch {
             _isLoading.value = true
-            _clients.value = emptyList()   // очищаем перед загрузкой
+            _clients.value = emptyList()
             try {
                 _clients.value = RepositoryProvider.clientRepo.getAllClients()
             } catch (e: Exception) {
-                _message.value = "Ошибка загрузки клиентов: ${e.message}"
+                MessageBus.show("Ошибка загрузки клиентов: ${e.message}")
                 Timber.e(e, "Ошибка загрузки клиентов")
             } finally {
                 _isLoading.value = false
@@ -52,13 +58,13 @@ class ClientViewModel : ViewModel() {
     fun saveClient() {
         val client = _currentClient.value
         val authUser = currentAuthUser ?: run {
-            _message.value = "Не выполнен вход"
+            MessageBus.show("Не выполнен вход")
             return
         }
 
         viewModelScope.launch {
             if (!canModifyClient(authUser, client.id.isEmpty())) {
-                _message.value = "Недостаточно прав для сохранения клиента"
+                MessageBus.show("Недостаточно прав для сохранения клиента")
                 return@launch
             }
 
@@ -72,16 +78,17 @@ class ClientViewModel : ViewModel() {
             try {
                 if (client.id.isEmpty() || _clients.value.none { it.id == client.id }) {
                     RepositoryProvider.clientRepo.createClient(client)
-                    _message.value = "Клиент создан"
+                    MessageBus.show("Клиент создан")
                     LoggerService.log("Клиент создан: ${client.client_title}")
                 } else {
                     RepositoryProvider.clientRepo.updateClient(client)
-                    _message.value = "Клиент обновлён"
+                    MessageBus.show("Клиент обновлён")
                     LoggerService.log("Клиент обновлён: ${client.client_title}")
                 }
+                _operationCompleted.value = true
                 loadClients()
             } catch (e: Exception) {
-                _message.value = "Ошибка сохранения: ${e.message}"
+                MessageBus.show("Ошибка сохранения: ${e.message}")
                 Timber.e(e, "Ошибка сохранения клиента")
             }
         }
@@ -89,21 +96,21 @@ class ClientViewModel : ViewModel() {
 
     fun deleteClient(client: Client) {
         val authUser = currentAuthUser ?: run {
-            _message.value = "Не выполнен вход"
+            MessageBus.show("Не выполнен вход")
             return
         }
         viewModelScope.launch {
             if (!canDeleteClient(authUser)) {
-                _message.value = "Недостаточно прав для удаления клиента"
+                MessageBus.show("Недостаточно прав для удаления клиента")
                 return@launch
             }
             try {
                 RepositoryProvider.clientRepo.deleteClient(client)
-                _message.value = "Клиент удалён"
+                MessageBus.show("Клиент удалён")
                 LoggerService.log("Клиент удалён: ${client.client_title}")
                 loadClients()
             } catch (e: Exception) {
-                _message.value = "Ошибка удаления: ${e.message}"
+                MessageBus.show("Ошибка удаления: ${e.message}")
                 Timber.e(e, "Ошибка удаления клиента")
             }
         }
@@ -112,6 +119,7 @@ class ClientViewModel : ViewModel() {
     fun setEditingClient(client: Client) {
         _currentClient.value = client
         _errors.value = emptyMap()
+        _operationCompleted.value = false
     }
 
     fun initNewClient(defaultTitle: String = "") {
@@ -122,6 +130,7 @@ class ClientViewModel : ViewModel() {
             is_legal = false
         )
         _errors.value = emptyMap()
+        _operationCompleted.value = false
     }
 
     fun updateField(field: String, value: String) {
@@ -135,8 +144,11 @@ class ClientViewModel : ViewModel() {
         }
     }
 
-    fun clearMessage() {
-        _message.value = null
+    /**
+     * Сброс флага завершения. Вызывается после закрытия экрана.
+     */
+    fun resetOperationCompleted() {
+        _operationCompleted.value = false
     }
 
     private suspend fun canModifyClient(user: User, isNew: Boolean): Boolean {

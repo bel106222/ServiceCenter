@@ -7,33 +7,25 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import ru.bel.servicecenter.factory.DataFactory
 import ru.bel.servicecenter.models.User
-import ru.bel.servicecenter.repository.RepositoryProvider
 import ru.bel.servicecenter.utils.LoggerService
+import ru.bel.servicecenter.utils.MessageBus
 import ru.bel.servicecenter.utils.RoleCache
 import timber.log.Timber
 
-/**
- * ViewModel для административных функций.
- * Очистка БД и проверка целостности.
- */
 class AdminViewModel : ViewModel() {
 
-    private val _message = MutableStateFlow<String?>(null)
-    val message: StateFlow<String?> = _message
+    private val _operationCompleted = MutableStateFlow(false)
+    val operationCompleted: StateFlow<Boolean> = _operationCompleted
 
     var currentAuthUser: User? = null
 
-    /**
-     * Полная очистка и повторная инициализация БД.
-     * Доступно только администратору.
-     */
     fun clearAndReseedDatabase(adminPassword: String) {
         val authUser = currentAuthUser ?: run {
-            _message.value = "Не выполнен вход"
+            MessageBus.show("Не выполнен вход")
             return
         }
         if (RoleCache.get(authUser.role_id) != "admin") {
-            _message.value = "Требуется роль администратора"
+            MessageBus.show("Требуется роль администратора")
             return
         }
 
@@ -42,20 +34,17 @@ class AdminViewModel : ViewModel() {
                 val factory = DataFactory()
                 val adminId = factory.createInitialStructure()
                 factory.setAdminPassword(adminId, adminPassword)
-
-                _message.value = "База данных очищена и пересоздана"
+                MessageBus.show("База данных очищена и пересоздана")
                 LoggerService.log("БД очищена и пересоздана администратором")
+                _operationCompleted.value = true
             } catch (e: Exception) {
-                _message.value = "Ошибка очистки БД: ${e.message}"
+                MessageBus.show("Ошибка очистки БД: ${e.message}")
                 Timber.e(e, "Ошибка очистки БД")
             }
         }
     }
 
-    /**
-     * Очищает сообщение.
-     */
-    fun clearMessage() {
-        _message.value = null
+    fun resetOperationCompleted() {
+        _operationCompleted.value = false
     }
 }

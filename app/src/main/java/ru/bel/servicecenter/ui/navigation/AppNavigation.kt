@@ -1,10 +1,14 @@
 package ru.bel.servicecenter.ui.navigation
 
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.runtime.*
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.rememberNavController
 import ru.bel.servicecenter.repository.RepositoryProvider
@@ -12,6 +16,7 @@ import ru.bel.servicecenter.ui.components.HistoryDialog
 import ru.bel.servicecenter.ui.components.StatusBar
 import ru.bel.servicecenter.ui.status.DatabaseStatusScreen
 import ru.bel.servicecenter.utils.LoggerService
+import ru.bel.servicecenter.utils.MessageBus
 import ru.bel.servicecenter.utils.RoleCache
 import ru.bel.servicecenter.utils.StatusTree
 import ru.bel.servicecenter.viewmodels.*
@@ -21,11 +26,20 @@ import timber.log.Timber
 fun AppNavigation(onExit: () -> Unit) {
     val statusViewModel = remember { StatusViewModel() }
     var showHistoryDialog by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
 
+    // Настройка логирования
     LaunchedEffect(Unit) {
         Timber.uprootAll()
         Timber.plant(StatusTree())
         LoggerService.log("Приложение запущено")
+    }
+
+    // Подписка на глобальные сообщения для Snackbar
+    LaunchedEffect(Unit) {
+        MessageBus.messages.collect { message ->
+            snackbarHostState.showSnackbar(message)
+        }
     }
 
     val navController = rememberNavController()
@@ -64,12 +78,14 @@ fun AppNavigation(onExit: () -> Unit) {
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
             StatusBar(
                 viewModel = statusViewModel,
                 onShowHistory = { showHistoryDialog = true }
             )
-        }
+        },
+        contentWindowInsets = WindowInsets(0, 0, 0, 0)
     ) { paddingValues ->
         Box(modifier = Modifier.padding(paddingValues)) {
             if (!showApp) {
@@ -80,26 +96,42 @@ fun AppNavigation(onExit: () -> Unit) {
                 )
             } else {
                 val loggedUser by authViewModel.loggedUser.collectAsState()
+                val userRole by authViewModel.userRole.collectAsState()
 
-                LaunchedEffect(loggedUser) {
-                    loggedUser?.let { user ->
-                        val role = authViewModel.userRole.value ?: "user"
+                LaunchedEffect(loggedUser, userRole) {
+                    val user = loggedUser ?: return@LaunchedEffect
+                    val role = userRole ?: "user"
 
-                        // Устанавливаем роль и пользователя в ViewModel заказов
-                        orderViewModel.currentAuthUser = user
-                        orderViewModel.currentUserRole = role
+                    orderViewModel.currentAuthUser = user
+                    orderViewModel.currentUserRole = role
+                    clientViewModel.currentAuthUser = user
+                    categoryViewModel.currentAuthUser = user
+                    serviceViewModel.currentAuthUser = user
+                    priceViewModel.currentAuthUser = user
+                    userViewModel.currentAuthUser = user
+                    orderItemViewModel.currentAuthUser = user
 
-                        // Для остальных ViewModel тоже можно сразу установить пользователя
-                        clientViewModel.currentAuthUser = user
-                        categoryViewModel.currentAuthUser = user
-                        serviceViewModel.currentAuthUser = user
-                        priceViewModel.currentAuthUser = user
-                        userViewModel.currentAuthUser = user
-                        orderItemViewModel.currentAuthUser = user
+                    LoggerService.log("Навигация: роль=$role, client_id=${user.client_id}")
 
-                        LoggerService.log("Переход на дашборд")
-                        navController.navigate("dashboard") {
-                            popUpTo("start") { inclusive = true }
+                    when (role) {
+                        "user" -> {
+                            if (user.client_id.isNullOrBlank()) {
+                                navController.navigate("not_a_client") {
+                                    popUpTo("start") { inclusive = true }
+                                    launchSingleTop = true
+                                }
+                            } else {
+                                navController.navigate("dashboard") {
+                                    popUpTo("start") { inclusive = true }
+                                    launchSingleTop = true
+                                }
+                            }
+                        }
+                        else -> {
+                            navController.navigate("dashboard") {
+                                popUpTo("start") { inclusive = true }
+                                launchSingleTop = true
+                            }
                         }
                     }
                 }
@@ -112,7 +144,7 @@ fun AppNavigation(onExit: () -> Unit) {
                     dashboardGraph(
                         navController = navController,
                         authViewModel = authViewModel,
-                        onExit = onExit   // <-- передаём колбэк
+                        onExit = onExit
                     )
                     profileGraph(navController, authViewModel, userViewModel)
                     clientsGraph(navController, clientViewModel)

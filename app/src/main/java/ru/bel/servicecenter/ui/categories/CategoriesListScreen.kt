@@ -3,6 +3,11 @@ package ru.bel.servicecenter.ui.categories
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,13 +25,10 @@ fun CategoriesListScreen(
 ) {
     val categories by categoryViewModel.categories.collectAsState()
     val isLoading by categoryViewModel.isLoading.collectAsState()
-    val message by categoryViewModel.message.collectAsState()
-    var showMessage by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         categoryViewModel.loadCategories()
     }
-    LaunchedEffect(message) { if (message != null) showMessage = true }
 
     Scaffold(
         topBar = {
@@ -37,53 +39,70 @@ fun CategoriesListScreen(
         },
         floatingActionButton = {
             FloatingActionButton(onClick = {
-                categoryViewModel.clearMessage()
                 categoryViewModel.setEditingCategory(Category(category_name = ""))
                 onEditCategory(categoryViewModel.currentCategory.value)
-            }) { Text("+") }
+            }) {
+                Icon(Icons.Default.Add, contentDescription = "Добавить категорию")
+            }
         }
     ) { padding ->
-        if (isLoading) {
-            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+        when {
+            isLoading -> Box(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                contentAlignment = Alignment.Center
+            ) { CircularProgressIndicator() }
+
+            categories.isEmpty() -> Column(
+                modifier = Modifier.fillMaxSize().padding(padding).padding(32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Icon(Icons.Default.Category, null, Modifier.size(72.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(16.dp))
+                Text("Категорий пока нет", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(8.dp))
+                Text("Нажмите +, чтобы добавить первую категорию",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-        } else {
-            LazyColumn(modifier = Modifier.padding(padding)) {
+
+            else -> LazyColumn(modifier = Modifier.padding(padding)) {
                 items(categories) { category ->
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ElevatedCard(
+                        modifier = Modifier.fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
-                            Text(category.category_name, style = MaterialTheme.typography.titleMedium)
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Category, null,
+                                    Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.width(8.dp))
+                                Text(category.category_name,
+                                    style = MaterialTheme.typography.titleMedium)
+                            }
+                            Spacer(Modifier.height(8.dp))
                             Row {
                                 TextButton(onClick = {
-                                    categoryViewModel.clearMessage()
                                     categoryViewModel.setEditingCategory(category)
                                     onEditCategory(category)
-                                }) { Text("Изменить") }
-                                TextButton(onClick = { categoryViewModel.deleteCategory(category) }) { Text("Удалить") }
+                                }) {
+                                    Icon(Icons.Default.Edit, null, Modifier.size(18.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Изменить")
+                                }
+                                TextButton(onClick = { categoryViewModel.deleteCategory(category) }) {
+                                    Icon(Icons.Default.Delete, null, Modifier.size(18.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Удалить")
+                                }
                             }
                         }
                     }
                 }
             }
         }
-    }
-
-    if (showMessage) {
-        AlertDialog(
-            onDismissRequest = { showMessage = false },
-            title = { Text("Сообщение") },
-            text = { Text(message ?: "") },
-            confirmButton = {
-                TextButton(onClick = {
-                    showMessage = false
-                    categoryViewModel.clearMessage()
-                }) { Text("OK") }
-            }
-        )
     }
 }

@@ -82,4 +82,6 @@ dependencies {
 
     // bcrypt — хеширование паролей
     implementation("org.mindrot:jbcrypt:0.4")
+
+    implementation("androidx.compose.material:material-icons-extended")
 }

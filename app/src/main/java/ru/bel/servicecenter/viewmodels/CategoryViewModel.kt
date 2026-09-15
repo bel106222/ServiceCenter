@@ -10,6 +10,7 @@ import ru.bel.servicecenter.models.User
 import ru.bel.servicecenter.repository.RepositoryProvider
 import ru.bel.servicecenter.rules.ValidationRules
 import ru.bel.servicecenter.utils.LoggerService
+import ru.bel.servicecenter.utils.MessageBus
 import ru.bel.servicecenter.utils.RoleCache
 import timber.log.Timber
 
@@ -24,11 +25,11 @@ class CategoryViewModel : ViewModel() {
     private val _errors = MutableStateFlow<Map<String, String?>>(emptyMap())
     val errors: StateFlow<Map<String, String?>> = _errors
 
-    private val _message = MutableStateFlow<String?>(null)
-    val message: StateFlow<String?> = _message
-
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
+
+    private val _operationCompleted = MutableStateFlow(false)
+    val operationCompleted: StateFlow<Boolean> = _operationCompleted
 
     var currentAuthUser: User? = null
 
@@ -39,7 +40,7 @@ class CategoryViewModel : ViewModel() {
             try {
                 _categories.value = RepositoryProvider.categoryRepo.getAllCategories()
             } catch (e: Exception) {
-                _message.value = "Ошибка загрузки категорий: ${e.message}"
+                MessageBus.show("Ошибка загрузки категорий: ${e.message}")
                 Timber.e(e, "Ошибка загрузки категорий")
             } finally {
                 _isLoading.value = false
@@ -50,13 +51,13 @@ class CategoryViewModel : ViewModel() {
     fun saveCategory() {
         val category = _currentCategory.value
         val authUser = currentAuthUser ?: run {
-            _message.value = "Не выполнен вход"
+            MessageBus.show("Не выполнен вход")
             return
         }
 
         viewModelScope.launch {
             if (!canModify(authUser)) {
-                _message.value = "Недостаточно прав"
+                MessageBus.show("Недостаточно прав")
                 return@launch
             }
 
@@ -73,16 +74,17 @@ class CategoryViewModel : ViewModel() {
 
                 if (category.id.isEmpty() || _categories.value.none { it.id == category.id }) {
                     RepositoryProvider.categoryRepo.createCategory(category)
-                    _message.value = "Категория создана"
+                    MessageBus.show("Категория создана")
                     LoggerService.log("Категория создана: ${category.category_name}")
                 } else {
                     RepositoryProvider.categoryRepo.updateCategory(category)
-                    _message.value = "Категория обновлена"
+                    MessageBus.show("Категория обновлена")
                     LoggerService.log("Категория обновлена: ${category.category_name}")
                 }
+                _operationCompleted.value = true
                 loadCategories()
             } catch (e: Exception) {
-                _message.value = "Ошибка сохранения: ${e.message}"
+                MessageBus.show("Ошибка сохранения: ${e.message}")
                 Timber.e(e, "Ошибка сохранения категории")
             }
         }
@@ -90,21 +92,21 @@ class CategoryViewModel : ViewModel() {
 
     fun deleteCategory(category: Category) {
         val authUser = currentAuthUser ?: run {
-            _message.value = "Не выполнен вход"
+            MessageBus.show("Не выполнен вход")
             return
         }
         viewModelScope.launch {
             if (!canModify(authUser)) {
-                _message.value = "Недостаточно прав"
+                MessageBus.show("Недостаточно прав")
                 return@launch
             }
             try {
                 RepositoryProvider.categoryRepo.deleteCategory(category)
-                _message.value = "Категория удалена"
+                MessageBus.show("Категория удалена")
                 LoggerService.log("Категория удалена: ${category.category_name}")
                 loadCategories()
             } catch (e: Exception) {
-                _message.value = "Ошибка удаления: ${e.message}"
+                MessageBus.show("Ошибка удаления: ${e.message}")
                 Timber.e(e, "Ошибка удаления категории")
             }
         }
@@ -113,14 +115,15 @@ class CategoryViewModel : ViewModel() {
     fun setEditingCategory(category: Category) {
         _currentCategory.value = category
         _errors.value = emptyMap()
+        _operationCompleted.value = false
     }
 
     fun updateField(field: String, value: String) {
         _currentCategory.value = _currentCategory.value.copy(category_name = value)
     }
 
-    fun clearMessage() {
-        _message.value = null
+    fun resetOperationCompleted() {
+        _operationCompleted.value = false
     }
 
     private suspend fun canModify(user: User): Boolean {

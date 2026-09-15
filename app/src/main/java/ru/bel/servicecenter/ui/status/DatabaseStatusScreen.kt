@@ -1,16 +1,16 @@
 package ru.bel.servicecenter.ui.status
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.Image
-import androidx.compose.ui.res.painterResource
-import ru.bel.servicecenter.ui.theme.ThemeManager
-import ru.bel.servicecenter.R
 
 @Composable
 fun DatabaseStatusScreen(
@@ -21,75 +21,113 @@ fun DatabaseStatusScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.Center
-        ) {
-            Image(
-                painter = painterResource(id = R.drawable.ic_launcher_round),  // если файл называется ic_launcher_round.png
-                contentDescription = "Логотип",
-                modifier = Modifier.size(120.dp)
-            )
-            Spacer(modifier = Modifier.height(8.dp))
+        Text("Сервисный центр", style = MaterialTheme.typography.headlineLarge)
+        Spacer(modifier = Modifier.height(24.dp))
 
-            Text("Сервисный центр", style = MaterialTheme.typography.headlineLarge)
-            Spacer(modifier = Modifier.height(24.dp))
+        Text(
+            "Статус базы данных",
+            style = MaterialTheme.typography.titleMedium
+        )
+        Spacer(modifier = Modifier.height(24.dp))
 
-            // Заголовок тем же размером, что и строки проверки
-            Text("Статус базы данных:", style = MaterialTheme.typography.bodyLarge)
-            Spacer(modifier = Modifier.height(8.dp))
+        // Строка "Подключение к серверу"
+        StatusLine(
+            label = "Подключение к серверу",
+            status = connectionOk
+        )
+        Spacer(modifier = Modifier.height(12.dp))
 
-            StatusLine("Подключение к серверу", connectionOk)
-            Spacer(modifier = Modifier.height(8.dp))
-            StatusLine("Целостность БД", integrityOk)
+        // Строка "Целостность БД"
+        StatusLine(
+            label = "Целостность БД",
+            status = integrityOk
+        )
 
-            if (connectionOk == false || integrityOk == false) {
-                Spacer(modifier = Modifier.height(24.dp))
+        // Если есть ошибка — показываем сообщение и кнопку "Выход"
+        if (connectionOk == false || integrityOk == false) {
+            Spacer(modifier = Modifier.height(32.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.Error,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Ошибка: " + when {
-                        connectionOk == false -> "нет подключения к серверу"
-                        integrityOk == false -> "база данных не готова или повреждена"
-                        else -> ""
+                    text = when {
+                        connectionOk == false -> "Нет подключения к серверу"
+                        integrityOk == false -> "База данных не готова"
+                        else -> "Ошибка"
                     },
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodyLarge
                 )
-                Spacer(modifier = Modifier.height(16.dp))
-                Button(onClick = onExit, modifier = Modifier.fillMaxWidth()) {
-                    Text("Выход")
-                }
+            }
+            Spacer(modifier = Modifier.height(24.dp))
+            Button(
+                onClick = onExit,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.ExitToApp, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Выход")
             }
         }
-
-        Button(
-            onClick = { ThemeManager.isDark = !ThemeManager.isDark },
-            modifier = Modifier.align(Alignment.CenterHorizontally)
-        ) {
-            Text(if (ThemeManager.isDark) "Светлая тема" else "Тёмная тема")
-        }
-        Spacer(modifier = Modifier.height(8.dp))
     }
 }
 
 @Composable
 private fun StatusLine(label: String, status: Boolean?) {
-    val text = when (status) {
-        null -> "$label..."
-        true -> "$label  ✓"
-        false -> "$label  ✗"
+    // Row без fillMaxWidth — он обнимает содержимое и центрируется родителем
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        when (status) {
+            null -> {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    "$label...",
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            }
+            true -> {
+                Icon(
+                    Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = Color(0xFF4CAF50),
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    label,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = Color(0xFF4CAF50)
+                )
+            }
+            false -> {
+                Icon(
+                    Icons.Default.Error,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    label,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+        }
     }
-    val color = when (status) {
-        true -> Color(0xFF4CAF50)
-        false -> MaterialTheme.colorScheme.error
-        else -> MaterialTheme.colorScheme.onSurface
-    }
-    Text(
-        text = text,
-        color = color,
-        style = MaterialTheme.typography.bodyLarge
-    )
 }

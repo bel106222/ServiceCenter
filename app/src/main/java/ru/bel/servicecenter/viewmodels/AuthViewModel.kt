@@ -10,6 +10,7 @@ import ru.bel.servicecenter.models.User
 import ru.bel.servicecenter.repository.RepositoryProvider
 import ru.bel.servicecenter.utils.LoggerService
 import ru.bel.servicecenter.utils.RoleCache
+import ru.bel.servicecenter.utils.MessageBus
 import timber.log.Timber
 
 /**
@@ -40,19 +41,18 @@ class AuthViewModel : ViewModel() {
             try {
                 val user = RepositoryProvider.userRepo.getUserByEmail(email)
                 if (user != null && BCrypt.checkpw(password, user.user_password)) {
-                    // Роль берём из глобального кэша, который уже загружен при старте
                     val role = RoleCache.get(user.role_id)
                     _userRole.value = role
                     _loggedUser.value = user
                     _error.value = null
                     LoggerService.log("Успешный вход: ${user.user_email}, роль: $role")
-                    Timber.i("Успешный вход: ${user.user_email}, роль: $role")
                 } else {
                     _error.value = "Неверный email или пароль"
+                    MessageBus.show("Неверный email или пароль")
                 }
             } catch (e: Exception) {
                 _error.value = "Ошибка входа: ${e.message}"
-                Timber.e(e, "Ошибка входа")
+                MessageBus.show("Ошибка входа: ${e.message}")
             }
         }
     }
@@ -68,6 +68,7 @@ class AuthViewModel : ViewModel() {
                 val existing = RepositoryProvider.userRepo.getUserByEmail(email)
                 if (existing != null) {
                     _error.value = "Пользователь с таким email уже существует"
+                    MessageBus.show("Пользователь с таким email уже существует")
                     return@launch
                 }
 

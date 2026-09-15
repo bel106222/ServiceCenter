@@ -4,6 +4,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,13 +23,11 @@ fun PriceCategoriesScreen(
     onBack: () -> Unit
 ) {
     val categories by priceViewModel.categories.collectAsState()
-    val message by priceViewModel.message.collectAsState()
-    var showMessage by remember { mutableStateOf(false) }
+    val isLoading by priceViewModel.isLoadingCategories.collectAsState()
 
     LaunchedEffect(Unit) {
         priceViewModel.loadCategories()
     }
-    LaunchedEffect(message) { if (message != null) showMessage = true }
 
     Scaffold(
         topBar = {
@@ -36,41 +37,48 @@ fun PriceCategoriesScreen(
             )
         }
     ) { padding ->
-        if (categories.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+        when {
+            isLoading && categories.isEmpty() -> Box(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                contentAlignment = Alignment.Center
+            ) { CircularProgressIndicator() }
+
+            categories.isEmpty() -> Column(
+                modifier = Modifier.fillMaxSize().padding(padding).padding(32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Icon(Icons.Default.Category, null, Modifier.size(72.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(16.dp))
+                Text("Категорий пока нет", style = MaterialTheme.typography.titleMedium)
             }
-        } else {
-            LazyColumn(modifier = Modifier.padding(padding)) {
+
+            else -> LazyColumn(modifier = Modifier.padding(padding)) {
                 items(categories) { category ->
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
+                    ElevatedCard(
+                        modifier = Modifier.fillMaxWidth()
                             .padding(horizontal = 8.dp, vertical = 4.dp)
-                            .clickable { onSelectCategory(category) }
+                            .clickable { onSelectCategory(category) },
+                        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
                     ) {
-                        Text(
-                            text = category.category_name,
-                            modifier = Modifier.padding(16.dp),
-                            style = MaterialTheme.typography.titleMedium
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Category, null,
+                                Modifier.size(24.dp),
+                                tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(12.dp))
+                            Text(category.category_name,
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.weight(1f))
+                            Icon(Icons.Default.ChevronRight, null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             }
         }
-    }
-
-    if (showMessage) {
-        AlertDialog(
-            onDismissRequest = { showMessage = false },
-            title = { Text("Сообщение") },
-            text = { Text(message ?: "") },
-            confirmButton = {
-                TextButton(onClick = {
-                    showMessage = false
-                    priceViewModel.clearMessage()
-                }) { Text("OK") }
-            }
-        )
     }
 }

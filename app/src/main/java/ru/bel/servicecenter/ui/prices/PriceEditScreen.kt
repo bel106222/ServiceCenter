@@ -1,14 +1,24 @@
 package ru.bel.servicecenter.ui.prices
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Payments
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import ru.bel.servicecenter.models.Service
 import ru.bel.servicecenter.viewmodels.PriceViewModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PriceEditScreen(
     priceViewModel: PriceViewModel,
@@ -17,82 +27,111 @@ fun PriceEditScreen(
     onCancel: () -> Unit
 ) {
     val currentPrice by priceViewModel.currentPrice.collectAsState()
-    val message by priceViewModel.message.collectAsState()
+    val operationCompleted by priceViewModel.operationCompleted.collectAsState()
 
     var cost by remember { mutableStateOf(currentPrice?.service_cost?.toString() ?: "") }
     var isTime by remember { mutableStateOf(currentPrice?.is_time ?: false) }
     var isSaving by remember { mutableStateOf(false) }
+    var costError by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(message) {
-        if (message != null) {
+    LaunchedEffect(operationCompleted) {
+        if (operationCompleted) {
             isSaving = false
-            if (message == "Цена обновлена") {
-                onSaved()
-            }
+            priceViewModel.resetOperationCompleted()
+            onSaved()
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Редактирование цены", style = MaterialTheme.typography.headlineSmall)
-        Spacer(modifier = Modifier.height(16.dp))
-
-        OutlinedTextField(
-            value = service.service_name,
-            onValueChange = {},
-            readOnly = true,
-            label = { Text("Услуга") },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = false
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-
-        OutlinedTextField(
-            value = cost,
-            onValueChange = { cost = it },
-            label = { Text("Стоимость") },
-            isError = cost.toFloatOrNull() == null || (cost.toFloatOrNull() ?: 0f) <= 0,
-            supportingText = {
-                if (cost.toFloatOrNull() == null || (cost.toFloatOrNull() ?: 0f) <= 0) {
-                    Text("Введите положительное число")
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Цена услуги") },
+                navigationIcon = {
+                    IconButton(onClick = onCancel) {
+                        Icon(Icons.Default.Close, contentDescription = "Закрыть")
+                    }
                 }
-            },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !isSaving
-        )
-        Spacer(modifier = Modifier.height(8.dp))
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.Top
+        ) {
+            OutlinedTextField(
+                value = service.service_name,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Услуга") },
+                leadingIcon = { Icon(Icons.Default.Build, null) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = false
+            )
+            Spacer(Modifier.height(12.dp))
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(
-                checked = isTime,
-                onCheckedChange = { isTime = it },
+            OutlinedTextField(
+                value = cost,
+                onValueChange = {
+                    cost = it
+                    costError = if (it.isNotEmpty() && (it.toFloatOrNull() == null || (it.toFloatOrNull() ?: 0f) <= 0))
+                        "Введите положительное число" else null
+                },
+                label = { Text("Стоимость (руб.)") },
+                leadingIcon = { Icon(Icons.Default.Payments, null) },
+                isError = costError != null,
+                supportingText = { costError?.let { Text(it) } },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth(),
                 enabled = !isSaving
             )
-            Text("Почасовая оплата")
-        }
+            Spacer(Modifier.height(16.dp))
 
-        Spacer(modifier = Modifier.height(24.dp))
-        Row(
-            horizontalArrangement = Arrangement.Center,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            if (isSaving) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Сохранение...")
-                }
-            } else {
-                Button(onClick = {
-                    val costValue = cost.toFloatOrNull()
-                    if (costValue != null && costValue > 0) {
-                        isSaving = true
-                        priceViewModel.createPrice(service, costValue, isTime)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Почасовая оплата", modifier = Modifier.weight(1f))
+                Switch(
+                    checked = isTime,
+                    onCheckedChange = { isTime = it },
+                    enabled = !isSaving
+                )
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            Row(horizontalArrangement = Arrangement.Center,
+                modifier = Modifier.fillMaxWidth()) {
+                if (isSaving) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Сохранение...")
                     }
-                }) { Text("Сохранить") }
-                Spacer(modifier = Modifier.width(16.dp))
-                Button(onClick = onCancel,
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
-                ) { Text("Отмена") }
+                } else {
+                    Button(onClick = {
+                        val costValue = cost.toFloatOrNull()
+                        if (costValue != null && costValue > 0) {
+                            isSaving = true
+                            priceViewModel.createPrice(service, costValue, isTime)
+                        } else {
+                            costError = "Введите положительное число"
+                        }
+                    }) {
+                        Icon(Icons.Default.Save, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Сохранить")
+                    }
+                    Spacer(Modifier.width(16.dp))
+                    FilledTonalButton(onClick = onCancel) {
+                        Icon(Icons.Default.Close, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Отмена")
+                    }
+                }
             }
         }
     }

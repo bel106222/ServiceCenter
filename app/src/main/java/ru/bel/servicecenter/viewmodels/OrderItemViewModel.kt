@@ -10,6 +10,7 @@ import ru.bel.servicecenter.models.Service
 import ru.bel.servicecenter.models.User
 import ru.bel.servicecenter.repository.RepositoryProvider
 import ru.bel.servicecenter.utils.LoggerService
+import ru.bel.servicecenter.utils.MessageBus
 import ru.bel.servicecenter.utils.RoleCache
 import timber.log.Timber
 
@@ -27,8 +28,8 @@ class OrderItemViewModel : ViewModel() {
     private val _selectedService = MutableStateFlow<Service?>(null)
     val selectedService: StateFlow<Service?> = _selectedService
 
-    private val _message = MutableStateFlow<String?>(null)
-    val message: StateFlow<String?> = _message
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = _isLoading
 
     var currentAuthUser: User? = null
     var currentOrderId: String = ""
@@ -38,6 +39,7 @@ class OrderItemViewModel : ViewModel() {
 
     fun loadServices() {
         viewModelScope.launch {
+            _isLoading.value = true
             try {
                 _services.value = RepositoryProvider.serviceRepo.getAllServices()
                 val allPrices = RepositoryProvider.priceRepo.getAllPrices()
@@ -49,8 +51,10 @@ class OrderItemViewModel : ViewModel() {
                 priceCache.clear()
                 priceCache.putAll(latestPrices)
             } catch (e: Exception) {
-                _message.value = "Ошибка загрузки услуг: ${e.message}"
+                MessageBus.show("Ошибка загрузки услуг: ${e.message}")
                 Timber.e(e, "Ошибка загрузки услуг")
+            } finally {
+                _isLoading.value = false
             }
         }
     }
@@ -64,18 +68,14 @@ class OrderItemViewModel : ViewModel() {
             user_id = user.id,
             orderitem_quantity = 1,
             orderitem_cost = 0f,
-            is_online = false,
-            created_at = java.time.LocalDateTime.now().toString(),
-            deleted_at = null
+            is_online = false
         )
         _selectedService.value = null
-        _message.value = null
     }
 
     fun startEditing(item: OrderItem) {
         _currentItem.value = item
         _selectedService.value = _services.value.find { it.id == item.service_id }
-        _message.value = null
     }
 
     fun selectService(service: Service) {
@@ -112,22 +112,19 @@ class OrderItemViewModel : ViewModel() {
         _currentItem.value = item.copy(orderitem_cost = baseCost * item.orderitem_quantity)
     }
 
+    /**
+     * Сохраняет позицию в ЧЕРНОВИК OrderViewModel (без записи в БД).
+     * Реальная запись произойдёт при нажатии «Сохранить» в заказе.
+     */
     fun saveItem(onSaved: () -> Unit) {
         val item = _currentItem.value ?: return
-        if (item.id.isEmpty() || _items.value.none { it.id == item.id }) {
+        val current = orderViewModel?.currentOrderWithItems?.value?.order_items ?: emptyList()
+        val isNew = item.id.isEmpty() || current.none { it.id == item.id }
+        if (isNew) {
             orderViewModel?.addItemToDraft(item)
         } else {
             orderViewModel?.updateItemInDraft(item)
         }
         onSaved()
-    }
-
-    fun deleteDraftItem(item: OrderItem, onDeleted: () -> Unit) {
-        orderViewModel?.deleteItemFromDraft(item.id)
-        onDeleted()
-    }
-
-    fun clearMessage() {
-        _message.value = null
     }
 }

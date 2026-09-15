@@ -16,6 +16,7 @@ import ru.bel.servicecenter.models.UserName
 import ru.bel.servicecenter.repository.RepositoryProvider
 import ru.bel.servicecenter.rules.ValidationRules
 import ru.bel.servicecenter.utils.LoggerService
+import ru.bel.servicecenter.utils.MessageBus
 import ru.bel.servicecenter.utils.RoleCache
 import timber.log.Timber
 import java.time.LocalDateTime
@@ -36,13 +37,9 @@ class OrderViewModel : ViewModel() {
     private val _errors = MutableStateFlow<Map<String, String?>>(emptyMap())
     val errors: StateFlow<Map<String, String?>> = _errors
 
-    private val _message = MutableStateFlow<String?>(null)
-    val message: StateFlow<String?> = _message
-
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
 
-    // ---------- Справочник услуг ----------
     private val _services = MutableStateFlow<List<Service>>(emptyList())
     val services: StateFlow<List<Service>> = _services
 
@@ -52,6 +49,10 @@ class OrderViewModel : ViewModel() {
 
     private val _isLoadingAttachments = MutableStateFlow(false)
     val isLoadingAttachments: StateFlow<Boolean> = _isLoadingAttachments
+
+    // Флаг для закрытия экрана редактирования
+    private val _operationCompleted = MutableStateFlow(false)
+    val operationCompleted: StateFlow<Boolean> = _operationCompleted
 
     // ---------- Служебные поля ----------
     var currentAuthUser: User? = null
@@ -81,6 +82,7 @@ class OrderViewModel : ViewModel() {
                 "user" -> allOrders.filter { it.user_id == authUser.id }
                 else -> emptyList()
             }
+            // Сначала незавершённые (по убыванию даты), затем завершённые
             val sorted = filtered.sortedWith(
                 compareBy<OrderWithItems> { it.is_completed }
                     .thenByDescending { it.created_at }
@@ -89,7 +91,7 @@ class OrderViewModel : ViewModel() {
             _services.value = RepositoryProvider.serviceRepo.getAllServices()
             isAdminOrEngineer = role == "admin" || role == "engineer"
         } catch (e: Exception) {
-            _message.value = "Ошибка загрузки заказов: ${e.message}"
+            MessageBus.show("Ошибка загрузки заказов: ${e.message}")
             Timber.e(e, "Ошибка загрузки заказов")
         } finally {
             _isLoading.value = false
@@ -134,7 +136,7 @@ class OrderViewModel : ViewModel() {
             _draftAttachments.value = emptyList()
             _isLoadingAttachments.value = false
             _errors.value = emptyMap()
-            _message.value = null
+            _operationCompleted.value = false
         }
     }
 
@@ -148,18 +150,15 @@ class OrderViewModel : ViewModel() {
         isNewOrder = false
         _authorName.value = orderWithItems.users?.user_name ?: "Неизвестный"
         _errors.value = emptyMap()
-        _message.value = null
+        _operationCompleted.value = false
 
         _draftAttachments.value = emptyList()
         _isLoadingAttachments.value = true
         viewModelScope.launch {
             try {
                 val attachments = RepositoryProvider.attachmentRepo.getAttachmentsByOrderId(orderWithItems.id)
-                LoggerService.log("Загружаю ${attachments.size} вложений из БД")
-
                 val drafts = attachments.mapNotNull { attachment ->
                     try {
-                        // Получаем свежую временную ссылку на файл
                         val url = RepositoryProvider.yandexDiskRepo.getDownloadUrl(attachment.url)
                         DraftAttachment(
                             id = attachment.id,
@@ -174,9 +173,8 @@ class OrderViewModel : ViewModel() {
                     }
                 }
                 _draftAttachments.value = drafts
-                LoggerService.log("Вложений готово к показу: ${drafts.size}")
             } catch (e: Exception) {
-                _message.value = "Ошибка загрузки вложений: ${e.message}"
+                MessageBus.show("Ошибка загрузки вложений: ${e.message}")
                 Timber.e(e, "Ошибка загрузки вложений")
             } finally {
                 _isLoadingAttachments.value = false
@@ -202,11 +200,6 @@ class OrderViewModel : ViewModel() {
 
     fun removeDraftAttachment(attachmentId: String) {
         _draftAttachments.value = _draftAttachments.value.filterNot { it.id == attachmentId }
-    }
-
-    fun clearDraftAttachments() {
-        _draftAttachments.value = emptyList()
-        _isLoadingAttachments.value = false
     }
 
     // ============================================================
@@ -255,7 +248,7 @@ class OrderViewModel : ViewModel() {
     fun saveOrder() {
         val orderWithItems = _currentOrderWithItems.value ?: return
         val authUser = currentAuthUser ?: run {
-            _message.value = "Не выполнен вход"
+            MessageBus.show("Не выполнен вход")
             return
         }
 
@@ -284,11 +277,11 @@ class OrderViewModel : ViewModel() {
                 )
                 if (isNewOrder) {
                     RepositoryProvider.orderRepo.createOrder(order)
-                    _message.value = "Заказ создан"
+                    MessageBus.show("Заказ создан")
                     LoggerService.log("Заказ создан: ${order.order_number}")
                 } else {
                     RepositoryProvider.orderRepo.updateOrder(order)
-                    _message.value = "Заказ обновлён"
+                    MessageBus.show("Заказ обновлён")
                     LoggerService.log("Заказ обновлён: ${order.order_number}")
                 }
 
@@ -307,12 +300,11 @@ class OrderViewModel : ViewModel() {
                     }
                 }
 
-                // 4. Обрабатываем вложения
+                // 4. Вложения: удаляем отсутствующие
                 val currentAttachments = _draftAttachments.value
                 val originalAttachments = RepositoryProvider.attachmentRepo.getAttachmentsByOrderId(order.id)
                 val currentAttachmentIds = currentAttachments.map { it.id }.toSet()
 
-                // 4.1. Удаляем отсутствующие
                 originalAttachments.forEach { original ->
                     if (original.id !in currentAttachmentIds) {
                         try {
@@ -324,18 +316,16 @@ class OrderViewModel : ViewModel() {
                     }
                 }
 
-                // 4.2. Загружаем новые
+                // 5. Вложения: загружаем новые
                 for (draft in currentAttachments) {
                     if (draft.isNew) {
                         val fileBytes = draft.fileBytes
                             ?: throw Exception("Отсутствуют данные изображения для ${draft.fileName}")
-
                         val uniqueName = "${order.id}_${draft.fileName}"
                         val diskPath = RepositoryProvider.yandexDiskRepo.uploadFile(
                             uniqueName = uniqueName,
                             fileBytes = fileBytes
                         )
-
                         val attachment = Attachment(
                             order_id = order.id,
                             filename = draft.fileName,
@@ -345,7 +335,7 @@ class OrderViewModel : ViewModel() {
                     }
                 }
 
-                // 5. Обновляем список и текущий заказ
+                // 6. Обновляем список и текущий заказ
                 loadOrders()
                 val updated = _ordersWithItems.value.find { it.id == order.id }
                 if (updated != null) {
@@ -353,7 +343,7 @@ class OrderViewModel : ViewModel() {
                     originalItems = updated.order_items
                 }
 
-                // 6. Обновляем черновик вложений — заменяем data-URI на временные ссылки
+                // 7. Обновляем черновик вложений
                 val freshAttachments = RepositoryProvider.attachmentRepo.getAttachmentsByOrderId(order.id)
                 _draftAttachments.value = freshAttachments.mapNotNull { attachment ->
                     try {
@@ -370,8 +360,10 @@ class OrderViewModel : ViewModel() {
                         null
                     }
                 }
+
+                _operationCompleted.value = true
             } catch (e: Exception) {
-                _message.value = "Ошибка сохранения: ${e.message}"
+                MessageBus.show("Ошибка сохранения: ${e.message}")
                 Timber.e(e, "Ошибка сохранения заказа")
             }
         }
@@ -382,14 +374,14 @@ class OrderViewModel : ViewModel() {
     // ============================================================
 
     fun deleteOrder(orderWithItems: OrderWithItems) {
-        val authUser = currentAuthUser ?: run { _message.value = "Не выполнен вход"; return }
+        val authUser = currentAuthUser ?: run { MessageBus.show("Не выполнен вход"); return }
         viewModelScope.launch {
             if (!canEditOrder(authUser, orderWithItems)) {
-                _message.value = "Недостаточно прав"
+                MessageBus.show("Недостаточно прав")
                 return@launch
             }
             if (orderWithItems.order_items.isNotEmpty()) {
-                _message.value = "Нельзя удалить заказ с позициями"
+                MessageBus.show("Нельзя удалить заказ с позициями")
                 return@launch
             }
             try {
@@ -415,11 +407,11 @@ class OrderViewModel : ViewModel() {
                     deleted_at = orderWithItems.deleted_at
                 )
                 RepositoryProvider.orderRepo.deleteOrder(order)
-                _message.value = "Заказ удалён"
+                MessageBus.show("Заказ удалён")
                 LoggerService.log("Заказ удалён: ${order.order_number}")
                 loadOrders()
             } catch (e: Exception) {
-                _message.value = "Ошибка удаления: ${e.message}"
+                MessageBus.show("Ошибка удаления: ${e.message}")
                 Timber.e(e, "Ошибка удаления заказа")
             }
         }
@@ -429,8 +421,8 @@ class OrderViewModel : ViewModel() {
     //                  ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ
     // ============================================================
 
-    fun clearMessage() {
-        _message.value = null
+    fun resetOperationCompleted() {
+        _operationCompleted.value = false
     }
 
     private suspend fun canEditOrder(authUser: User, order: OrderWithItems): Boolean {

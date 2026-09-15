@@ -11,6 +11,7 @@ import ru.bel.servicecenter.models.Service
 import ru.bel.servicecenter.models.User
 import ru.bel.servicecenter.repository.RepositoryProvider
 import ru.bel.servicecenter.utils.LoggerService
+import ru.bel.servicecenter.utils.MessageBus
 import ru.bel.servicecenter.utils.RoleCache
 import timber.log.Timber
 
@@ -28,21 +29,27 @@ class PriceViewModel : ViewModel() {
     private val _currentPrice = MutableStateFlow<Price?>(null)
     val currentPrice: StateFlow<Price?> = _currentPrice
 
-    private val _message = MutableStateFlow<String?>(null)
-    val message: StateFlow<String?> = _message
-
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
+
+    private val _isLoadingCategories = MutableStateFlow(false)
+    val isLoadingCategories: StateFlow<Boolean> = _isLoadingCategories
+
+    private val _operationCompleted = MutableStateFlow(false)
+    val operationCompleted: StateFlow<Boolean> = _operationCompleted
 
     var currentAuthUser: User? = null
 
     fun loadCategories() {
         viewModelScope.launch {
+            _isLoadingCategories.value = true
             try {
                 _categories.value = RepositoryProvider.categoryRepo.getAllCategories()
             } catch (e: Exception) {
-                _message.value = "Ошибка загрузки категорий: ${e.message}"
+                MessageBus.show("Ошибка загрузки категорий: ${e.message}")
                 Timber.e(e, "Ошибка загрузки категорий")
+            } finally {
+                _isLoadingCategories.value = false
             }
         }
     }
@@ -61,7 +68,7 @@ class PriceViewModel : ViewModel() {
                 }
                 _serviceWithPrice.value = result
             } catch (e: Exception) {
-                _message.value = "Ошибка загрузки цен: ${e.message}"
+                MessageBus.show("Ошибка загрузки цен: ${e.message}")
                 Timber.e(e, "Ошибка загрузки цен")
             } finally {
                 _isLoading.value = false
@@ -72,16 +79,17 @@ class PriceViewModel : ViewModel() {
     fun startEditing(service: Service, price: Price?) {
         _currentService.value = service
         _currentPrice.value = price
+        _operationCompleted.value = false
     }
 
     fun createPrice(service: Service, cost: Float, isTime: Boolean) {
         val authUser = currentAuthUser ?: run {
-            _message.value = "Не выполнен вход"
+            MessageBus.show("Не выполнен вход")
             return
         }
         viewModelScope.launch {
             if (!canModify(authUser)) {
-                _message.value = "Недостаточно прав"
+                MessageBus.show("Недостаточно прав")
                 return@launch
             }
             try {
@@ -91,20 +99,21 @@ class PriceViewModel : ViewModel() {
                     is_time = isTime
                 )
                 RepositoryProvider.priceRepo.createPrice(newPrice)
-                _message.value = "Цена обновлена"
+                MessageBus.show("Цена обновлена")
                 LoggerService.log("Цена обновлена для услуги: ${service.service_name}")
+                _operationCompleted.value = true
                 if (service.category_id.isNotBlank()) {
                     loadServicesWithPrices(service.category_id)
                 }
             } catch (e: Exception) {
-                _message.value = "Ошибка сохранения цены: ${e.message}"
+                MessageBus.show("Ошибка сохранения цены: ${e.message}")
                 Timber.e(e, "Ошибка сохранения цены")
             }
         }
     }
 
-    fun clearMessage() {
-        _message.value = null
+    fun resetOperationCompleted() {
+        _operationCompleted.value = false
     }
 
     data class ServiceWithPrice(

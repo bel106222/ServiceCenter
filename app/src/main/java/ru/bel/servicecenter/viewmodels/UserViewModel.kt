@@ -10,6 +10,7 @@ import ru.bel.servicecenter.models.User
 import ru.bel.servicecenter.repository.RepositoryProvider
 import ru.bel.servicecenter.rules.ValidationRules
 import ru.bel.servicecenter.utils.LoggerService
+import ru.bel.servicecenter.utils.MessageBus
 import ru.bel.servicecenter.utils.RoleCache
 import timber.log.Timber
 
@@ -26,11 +27,11 @@ class UserViewModel : ViewModel() {
     private val _errors = MutableStateFlow<Map<String, String?>>(emptyMap())
     val errors: StateFlow<Map<String, String?>> = _errors
 
-    private val _message = MutableStateFlow<String?>(null)
-    val message: StateFlow<String?> = _message
-
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
+
+    private val _operationCompleted = MutableStateFlow(false)
+    val operationCompleted: StateFlow<Boolean> = _operationCompleted
 
     var currentAuthUser: User? = null
 
@@ -41,7 +42,7 @@ class UserViewModel : ViewModel() {
             try {
                 _users.value = RepositoryProvider.userRepo.getAllUsers()
             } catch (e: Exception) {
-                _message.value = "Ошибка загрузки пользователей: ${e.message}"
+                MessageBus.show("Ошибка загрузки пользователей: ${e.message}")
                 Timber.e(e, "Ошибка загрузки пользователей")
             } finally {
                 _isLoading.value = false
@@ -52,13 +53,13 @@ class UserViewModel : ViewModel() {
     fun saveUser() {
         val user = _currentUser.value
         val authUser = currentAuthUser ?: run {
-            _message.value = "Не выполнен вход"
+            MessageBus.show("Не выполнен вход")
             return
         }
 
         viewModelScope.launch {
             if (!canModify(authUser, user.id.isEmpty())) {
-                _message.value = "Недостаточно прав"
+                MessageBus.show("Недостаточно прав")
                 return@launch
             }
 
@@ -80,7 +81,8 @@ class UserViewModel : ViewModel() {
             try {
                 val existing = RepositoryProvider.userRepo.getUserByEmail(user.user_email)
                 if (existing != null && existing.id != user.id) {
-                    _errors.value = _errors.value.toMutableMap().apply { put("user_email", "Email уже используется") }
+                    _errors.value = _errors.value.toMutableMap()
+                        .apply { put("user_email", "Email уже используется") }
                     return@launch
                 }
 
@@ -97,16 +99,17 @@ class UserViewModel : ViewModel() {
 
                 if (user.id.isEmpty() || _users.value.none { it.id == user.id }) {
                     RepositoryProvider.userRepo.createUser(updatedUser)
-                    _message.value = "Пользователь создан"
+                    MessageBus.show("Пользователь создан")
                     LoggerService.log("Пользователь создан: ${updatedUser.user_email}")
                 } else {
                     RepositoryProvider.userRepo.updateUser(updatedUser)
-                    _message.value = "Профиль обновлён"
+                    MessageBus.show("Профиль обновлён")
                     LoggerService.log("Пользователь обновлён: ${updatedUser.user_email}")
                 }
+                _operationCompleted.value = true
                 loadUsers()
             } catch (e: Exception) {
-                _message.value = "Ошибка сохранения: ${e.message}"
+                MessageBus.show("Ошибка сохранения: ${e.message}")
                 Timber.e(e, "Ошибка сохранения пользователя")
             }
         }
@@ -114,21 +117,21 @@ class UserViewModel : ViewModel() {
 
     fun deleteUser(user: User) {
         val authUser = currentAuthUser ?: run {
-            _message.value = "Не выполнен вход"
+            MessageBus.show("Не выполнен вход")
             return
         }
         viewModelScope.launch {
             if (!canModify(authUser, false)) {
-                _message.value = "Недостаточно прав"
+                MessageBus.show("Недостаточно прав")
                 return@launch
             }
             try {
                 RepositoryProvider.userRepo.deleteUser(user)
-                _message.value = "Пользователь удалён"
+                MessageBus.show("Пользователь удалён")
                 LoggerService.log("Пользователь удалён: ${user.user_email}")
                 loadUsers()
             } catch (e: Exception) {
-                _message.value = "Ошибка удаления: ${e.message}"
+                MessageBus.show("Ошибка удаления: ${e.message}")
                 Timber.e(e, "Ошибка удаления пользователя")
             }
         }
@@ -137,6 +140,7 @@ class UserViewModel : ViewModel() {
     fun setEditingUser(user: User) {
         _currentUser.value = user.copy(user_password = "***")
         _errors.value = emptyMap()
+        _operationCompleted.value = false
     }
 
     fun updateField(field: String, value: String) {
@@ -152,8 +156,8 @@ class UserViewModel : ViewModel() {
         }
     }
 
-    fun clearMessage() {
-        _message.value = null
+    fun resetOperationCompleted() {
+        _operationCompleted.value = false
     }
 
     private suspend fun canModify(user: User, isNew: Boolean): Boolean {

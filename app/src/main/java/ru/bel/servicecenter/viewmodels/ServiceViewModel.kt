@@ -11,6 +11,7 @@ import ru.bel.servicecenter.models.User
 import ru.bel.servicecenter.repository.RepositoryProvider
 import ru.bel.servicecenter.rules.ValidationRules
 import ru.bel.servicecenter.utils.LoggerService
+import ru.bel.servicecenter.utils.MessageBus
 import ru.bel.servicecenter.utils.RoleCache
 import timber.log.Timber
 
@@ -28,21 +29,27 @@ class ServiceViewModel : ViewModel() {
     private val _errors = MutableStateFlow<Map<String, String?>>(emptyMap())
     val errors: StateFlow<Map<String, String?>> = _errors
 
-    private val _message = MutableStateFlow<String?>(null)
-    val message: StateFlow<String?> = _message
-
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
+
+    private val _isLoadingCategories = MutableStateFlow(false)
+    val isLoadingCategories: StateFlow<Boolean> = _isLoadingCategories
+
+    private val _operationCompleted = MutableStateFlow(false)
+    val operationCompleted: StateFlow<Boolean> = _operationCompleted
 
     var currentAuthUser: User? = null
 
     fun loadCategories() {
         viewModelScope.launch {
+            _isLoadingCategories.value = true
             try {
                 _categories.value = RepositoryProvider.categoryRepo.getAllCategories()
             } catch (e: Exception) {
-                _message.value = "Ошибка загрузки категорий: ${e.message}"
+                MessageBus.show("Ошибка загрузки категорий: ${e.message}")
                 Timber.e(e, "Ошибка загрузки категорий")
+            } finally {
+                _isLoadingCategories.value = false
             }
         }
     }
@@ -54,7 +61,7 @@ class ServiceViewModel : ViewModel() {
             try {
                 _services.value = RepositoryProvider.serviceRepo.getServicesByCategoryId(categoryId)
             } catch (e: Exception) {
-                _message.value = "Ошибка загрузки услуг: ${e.message}"
+                MessageBus.show("Ошибка загрузки услуг: ${e.message}")
                 Timber.e(e, "Ошибка загрузки услуг")
             } finally {
                 _isLoading.value = false
@@ -70,18 +77,19 @@ class ServiceViewModel : ViewModel() {
             is_fixprice = false
         )
         _errors.value = emptyMap()
+        _operationCompleted.value = false
     }
 
     fun saveService() {
         val service = _currentService.value ?: return
         val authUser = currentAuthUser ?: run {
-            _message.value = "Не выполнен вход"
+            MessageBus.show("Не выполнен вход")
             return
         }
 
         viewModelScope.launch {
             if (!canModify(authUser)) {
-                _message.value = "Недостаточно прав"
+                MessageBus.show("Недостаточно прав")
                 return@launch
             }
 
@@ -94,16 +102,17 @@ class ServiceViewModel : ViewModel() {
             try {
                 if (service.id.isEmpty() || _services.value.none { it.id == service.id }) {
                     RepositoryProvider.serviceRepo.createService(service)
-                    _message.value = "Услуга создана"
+                    MessageBus.show("Услуга создана")
                     LoggerService.log("Услуга создана: ${service.service_name}")
                 } else {
                     RepositoryProvider.serviceRepo.updateService(service)
-                    _message.value = "Услуга обновлена"
+                    MessageBus.show("Услуга обновлена")
                     LoggerService.log("Услуга обновлена: ${service.service_name}")
                 }
+                _operationCompleted.value = true
                 loadServices(service.category_id)
             } catch (e: Exception) {
-                _message.value = "Ошибка сохранения: ${e.message}"
+                MessageBus.show("Ошибка сохранения: ${e.message}")
                 Timber.e(e, "Ошибка сохранения услуги")
             }
         }
@@ -111,21 +120,21 @@ class ServiceViewModel : ViewModel() {
 
     fun deleteService(service: Service) {
         val authUser = currentAuthUser ?: run {
-            _message.value = "Не выполнен вход"
+            MessageBus.show("Не выполнен вход")
             return
         }
         viewModelScope.launch {
             if (!canModify(authUser)) {
-                _message.value = "Недостаточно прав"
+                MessageBus.show("Недостаточно прав")
                 return@launch
             }
             try {
                 RepositoryProvider.serviceRepo.deleteService(service)
-                _message.value = "Услуга удалена"
+                MessageBus.show("Услуга удалена")
                 LoggerService.log("Услуга удалена: ${service.service_name}")
                 loadServices(service.category_id)
             } catch (e: Exception) {
-                _message.value = "Ошибка удаления: ${e.message}"
+                MessageBus.show("Ошибка удаления: ${e.message}")
                 Timber.e(e, "Ошибка удаления услуги")
             }
         }
@@ -142,8 +151,8 @@ class ServiceViewModel : ViewModel() {
         }
     }
 
-    fun clearMessage() {
-        _message.value = null
+    fun resetOperationCompleted() {
+        _operationCompleted.value = false
     }
 
     private suspend fun canModify(user: User): Boolean {
