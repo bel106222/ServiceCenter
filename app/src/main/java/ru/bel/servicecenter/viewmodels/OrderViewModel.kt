@@ -460,16 +460,24 @@ class OrderViewModel : ViewModel() {
         }
     }
 
-    private fun generateOrderNumber(clientTitle: String): String {
+    /**
+     * Формирует следующий номер заказа для указанного клиента.
+     * Номер состоит из префикса (3 заглавные буквы) и порядкового номера,
+     * добитого нулями до 5 знаков. Например: СЕР00001, СЕР00002.
+     */
+    private suspend fun generateOrderNumber(clientTitle: String): String {
         val prefix = generatePrefix(clientTitle)
-        val existingNumbers = _ordersWithItems.value
+
+        // Берём полный список заказов с сервера
+        val allOrders = RepositoryProvider.orderRepo.getAllOrders()
+
+        val existingNumbers = allOrders
             .filter { it.order_number.startsWith(prefix) }
             .mapNotNull { it.order_number.removePrefix(prefix).toIntOrNull() }
         val maxNum = existingNumbers.maxOrNull() ?: 0
         val next = maxNum + 1
         return prefix + next.toString().padStart(5, '0')
     }
-
     private fun generatePrefix(title: String): String {
         val cleaned = title.trim()
         if (cleaned.isEmpty()) return "XXX"
